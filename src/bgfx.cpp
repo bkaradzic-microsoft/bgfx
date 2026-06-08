@@ -3519,10 +3519,13 @@ namespace bgfx
 					void* data;
 					_cmdbuf.read(data);
 
+					uint16_t layer;
+					_cmdbuf.read(layer);
+
 					uint8_t mip;
 					_cmdbuf.read(mip);
 
-					m_renderCtx->readTexture(handle, data, mip);
+					m_renderCtx->readTexture(handle, data, layer, mip);
 				}
 				break;
 
@@ -4181,6 +4184,24 @@ namespace bgfx
 		}
 
 		BGFX_ENCODER(setTexture(_stage, _sampler, _handle, _flags) );
+	}
+
+	void Encoder::setTexture(uint8_t _stage, UniformHandle _sampler, TextureHandle _handle, uint16_t _firstLayer, uint16_t _numLayers, uint8_t _firstMip, uint8_t _numMips, uint32_t _flags)
+	{
+		BGFX_CHECK_HANDLE("setTexture/UniformHandle", s_ctx->m_uniformHandle, _sampler);
+		BGFX_CHECK_HANDLE_INVALID_OK("setTexture/TextureHandle", s_ctx->m_textureHandle, _handle);
+		BX_ASSERT(_stage < g_caps.limits.maxTextureSamplers, "Invalid stage %d (max %d).", _stage, g_caps.limits.maxTextureSamplers);
+
+		if (isValid(_handle) )
+		{
+			const TextureRef& ref = s_ctx->m_textureRef[_handle.idx];
+			BX_ASSERT(!ref.isReadBack()
+				, "Can't sample from texture which was created with BGFX_TEXTURE_READ_BACK. This is CPU only texture."
+				);
+			BX_UNUSED(ref);
+		}
+
+		BGFX_ENCODER(setTexture(_stage, _sampler, _handle, _firstLayer, _numLayers, _firstMip, _numMips, _flags) );
 	}
 
 	void Encoder::touch(ViewId _id)
@@ -5427,11 +5448,11 @@ namespace bgfx
 		}
 	}
 
-	uint32_t readTexture(TextureHandle _handle, void* _data, uint8_t _mip)
+	uint32_t readTexture(TextureHandle _handle, void* _data, uint16_t _layer, uint8_t _mip)
 	{
 		BX_ASSERT(NULL != _data, "_data can't be NULL");
 		BGFX_CHECK_CAPS(BGFX_CAPS_TEXTURE_READ_BACK, "Texture read-back is not supported!");
-		return s_ctx->readTexture(_handle, _data, _mip);
+		return s_ctx->readTexture(_handle, _data, _layer, _mip);
 	}
 
 	FrameBufferHandle createFrameBuffer(uint16_t _width, uint16_t _height, TextureFormat::Enum _format, uint64_t _textureFlags)
@@ -5882,6 +5903,12 @@ namespace bgfx
 	{
 		BGFX_CHECK_ENCODER0();
 		s_ctx->m_encoder0->setTexture(_stage, _sampler, _handle, _flags);
+	}
+
+	void setTexture(uint8_t _stage, UniformHandle _sampler, TextureHandle _handle, uint16_t _firstLayer, uint16_t _numLayers, uint8_t _firstMip, uint8_t _numMips, uint32_t _flags)
+	{
+		BGFX_CHECK_ENCODER0();
+		s_ctx->m_encoder0->setTexture(_stage, _sampler, _handle, _firstLayer, _numLayers, _firstMip, _numMips, _flags);
 	}
 
 	void touch(ViewId _id)
