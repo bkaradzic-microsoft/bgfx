@@ -4807,28 +4807,57 @@ namespace bgfx { namespace d3d11
 		const uint16_t bpp    = blockInfo.bitsPerPixel;
 		const uint32_t subres = _mip + ( (layer + _side) * m_numMips);
 		const bool     depth  = bimg::isDepth(bimg::TextureFormat::Enum(m_textureFormat) );
-		uint32_t rectpitch  = _rect.m_width*bpp/8;
+		uint32_t rectPitch  = _rect.m_width*bpp/8;
 		if (bimg::isCompressed(bimg::TextureFormat::Enum(m_textureFormat) ) )
 		{
-			rectpitch = (_rect.m_width / blockInfo.blockWidth)*blockInfo.blockSize;
+			rectPitch = (_rect.m_width / blockInfo.blockWidth)*blockInfo.blockSize;
 		}
 
-		const uint32_t srcpitch   = UINT16_MAX == _pitch ? rectpitch : _pitch;
-		const uint32_t slicepitch = rectpitch*_rect.m_height;
+		const uint32_t srcPitch   = UINT16_MAX == _pitch ? rectPitch : _pitch;
+		const uint32_t slicePitch = rectPitch*_rect.m_height;
 
 		const bool convert = m_textureFormat != m_requestedFormat;
+
+		uint32_t copyPitch = srcPitch;
 
 		uint8_t* data = _mem->data;
 		uint8_t* temp = NULL;
 
 		if (convert)
 		{
-			temp = (uint8_t*)bx::alloc(g_allocator, slicepitch);
-			bimg::imageDecodeToBgra8(g_allocator, temp, data, _rect.m_width, _rect.m_height, srcpitch, bimg::TextureFormat::Enum(m_requestedFormat) );
+			copyPitch = rectPitch;
+			temp = (uint8_t*)bx::alloc(g_allocator, slicePitch);
+			bimg::imageDecodeToBgra8(g_allocator, temp, data, _rect.m_width, _rect.m_height, copyPitch, bimg::TextureFormat::Enum(m_requestedFormat) );
 			data = temp;
 
-			box.right  = bx::max(1u, m_width  >> _mip);
-			box.bottom = bx::max(1u, m_height >> _mip);
+			box.right  = bx::clamp<uint32_t>(box.right,  box.left, bx::max(1u, m_width  >> _mip) );
+			box.bottom = bx::clamp<uint32_t>(box.bottom, box.top,  bx::max(1u, m_height >> _mip) );
+		}
+		else
+		{
+			switch (m_textureFormat)
+			{
+			case TextureFormat::R5G6B5:
+				temp = (uint8_t*)bx::alloc(g_allocator, slicePitch);
+				bimg::imageConvert(temp, 16, bx::packB5G6R5, data, bx::unpackR5G6B5, slicePitch);
+				data = temp;
+				break;
+
+			case TextureFormat::RGBA4:
+				temp = (uint8_t*)bx::alloc(g_allocator, slicePitch);
+				bimg::imageConvert(temp, 16, bx::packBgra4, data, bx::unpackRgba4, slicePitch);
+				data = temp;
+				break;
+
+			case TextureFormat::RGB5A1:
+				temp = (uint8_t*)bx::alloc(g_allocator, slicePitch);
+				bimg::imageConvert(temp, 16, bx::packBgr5a1, data, bx::unpackRgb5a1, slicePitch);
+				data = temp;
+				break;
+
+			default:
+				break;
+			}
 		}
 
 		deviceCtx->UpdateSubresource(
@@ -4836,8 +4865,8 @@ namespace bgfx { namespace d3d11
 			, subres
 			, depth ? NULL : &box
 			, data
-			, srcpitch
-			, TextureD3D11::Texture3D == m_type ? slicepitch : 0
+			, copyPitch
+			, TextureD3D11::Texture3D == m_type ? slicePitch : 0
 			);
 
 		if (NULL != temp)
@@ -5879,6 +5908,8 @@ namespace bgfx { namespace d3d11
 											? texture.m_uav
 											: s_renderD3D11->getCachedUav(texture.getHandle(), bind.m_firstMip)
 											;
+										m_textureStage.m_srv[stage]     = NULL;
+										m_textureStage.m_sampler[stage] = NULL;
 									}
 									else
 									{
@@ -5905,6 +5936,8 @@ namespace bgfx { namespace d3d11
 									if (Access::Read != bind.m_access)
 									{
 										uav[stage] = buffer.m_uav;
+										m_textureStage.m_srv[stage]     = NULL;
+										m_textureStage.m_sampler[stage] = NULL;
 									}
 									else
 									{
