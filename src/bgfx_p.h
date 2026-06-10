@@ -3249,6 +3249,7 @@ namespace bgfx
 		void init()
 		{
 			bx::memSet(m_refCount,                  0, sizeof(m_refCount)               );
+			bx::memSet(m_stride,                    0, sizeof(m_stride)                 );
 			bx::memSet(m_vertexBufferRef,        0xff, sizeof(m_vertexBufferRef)        );
 			bx::memSet(m_dynamicVertexBufferRef, 0xff, sizeof(m_dynamicVertexBufferRef) );
 		}
@@ -3333,6 +3334,7 @@ namespace bgfx
 		VertexLayoutMap m_vertexLayoutMap;
 
 		uint16_t m_refCount[BGFX_CONFIG_MAX_VERTEX_LAYOUTS];
+		uint16_t m_stride[BGFX_CONFIG_MAX_VERTEX_LAYOUTS];
 		VertexLayoutHandle m_vertexBufferRef[BGFX_CONFIG_MAX_VERTEX_BUFFERS];
 		VertexLayoutHandle m_dynamicVertexBufferRef[BGFX_CONFIG_MAX_DYNAMIC_VERTEX_BUFFERS];
 	};
@@ -4149,6 +4151,8 @@ namespace bgfx
 				BX_TRACE("WARNING: Failed to allocate vertex layout handle (BGFX_CONFIG_MAX_VERTEX_LAYOUTS, max: %d).", BGFX_CONFIG_MAX_VERTEX_LAYOUTS);
 				return BGFX_INVALID_HANDLE;
 			}
+
+			m_vertexLayoutRef.m_stride[layoutHandle.idx] = _layout.m_stride;
 
 			CommandBuffer& cmdbuf = getCommandBuffer(CommandBuffer::CreateVertexLayout);
 			cmdbuf.write(layoutHandle);
@@ -5402,11 +5406,16 @@ namespace bgfx
 
 		void resizeTexture(TextureHandle _handle, uint16_t _width, uint16_t _height, uint8_t _numMips, uint16_t _numLayers)
 		{
-			const TextureRef& ref = m_textureRef[_handle.idx];
+			TextureRef& ref = m_textureRef[_handle.idx];
 			BX_ASSERT(BackbufferRatio::Count != ref.m_bbRatio, "");
 
 			getTextureSizeFromRatio(BackbufferRatio::Enum(ref.m_bbRatio), _width, _height);
 			_numMips = calcNumMips(1 < _numMips, _width, _height);
+
+			ref.m_width     = _width;
+			ref.m_height    = _height;
+			ref.m_numMips   = _numMips;
+			ref.m_numLayers = _numLayers;
 
 			BX_TRACE("Resize %3d: %4dx%d %s"
 				, _handle.idx
