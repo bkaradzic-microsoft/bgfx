@@ -13,6 +13,7 @@
 #include <metal-cpp/metal.hpp>
 
 #include "renderer_mtl.h"
+#include "video_mtl.h"
 #include "renderer.h"
 #include <bx/macros.h>
 
@@ -767,9 +768,6 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 #define SHADER_FUNCTION_NAME "xlatMtlMain"
 #define SHADER_UNIFORM_NAME  "_mtl_u"
 
-	struct RendererContextMtl;
-	static RendererContextMtl* s_renderMtl;
-
 	struct ChunkedScratchBufferOffset
 	{
 		MTL::Buffer* buffer;
@@ -791,6 +789,9 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 		void flushChunk(ChunkMtl& _chunk, uint32_t _size);
 		uint32_t currentFrameInFlight() const;
 	};
+
+	struct RendererContextMtl;
+	static RendererContextMtl* s_renderMtl;
 
 	struct RendererContextMtl : public RendererContextI
 	{
@@ -1053,6 +1054,11 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 				}
 			}
 
+			if (_init.videoDecode)
+			{
+				initVideoDecoder();
+			}
+
 			for (uint32_t ii = 1, last = 0; ii < BX_COUNTOF(s_msaa); ++ii)
 			{
 				const int32_t sampleCount = 1<<ii;
@@ -1165,6 +1171,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 			return true;
 		}
 
+
 		void shutdown()
 		{
 			{
@@ -1181,6 +1188,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 
 				m_pipelineStateCache.invalidate();
 				m_pipelineProgram.clear();
+				m_lastPso = NULL;
 
 				m_depthStencilStateCache.invalidate();
 				m_samplerStateCache.invalidate();
@@ -1324,6 +1332,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 				}
 			}
 
+			m_lastPso = NULL;
 			m_program[_handle.idx].destroy();
 		}
 
@@ -1350,11 +1359,12 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 		{
 			const TextureMtl& texture = m_textures[_handle.idx];
 
-#if BX_PLATFORM_OSX
 			MTL::BlitCommandEncoder* bce = s_renderMtl->getBlitCommandEncoder();
+#if BX_PLATFORM_OSX
 			bce->synchronizeTexture(texture.m_ptr, _layer, _mip);
-			endEncoding();
 #endif  // BX_PLATFORM_OSX
+			BX_UNUSED(bce);
+			endEncoding();
 
 			m_cmd.kick(false, true);
 			m_commandBuffer = NULL;
@@ -1488,12 +1498,12 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 				return;
 			}
 
-#if BX_PLATFORM_OSX
 			m_blitCommandEncoder = getBlitCommandEncoder();
+#if BX_PLATFORM_OSX
 			m_blitCommandEncoder->synchronizeResource(m_screenshotTarget);
+#endif  // BX_PLATFORM_OSX
 			m_blitCommandEncoder->endEncoding();
 			m_blitCommandEncoder = NULL;
-#endif  // BX_PLATFORM_OSX
 
 			m_cmd.kick(false, true);
 			m_commandBuffer = 0;
@@ -1627,7 +1637,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 					);
 
 				MTL::RenderCommandEncoder* rce = m_commandBuffer->renderCommandEncoder(renderPassDescriptor);
-				m_renderCommandEncoder = rce;
+				setRenderCommandEncoder(rce);
 				m_renderCommandEncoderFbh = fbh;
 				MTL_RELEASE(renderPassDescriptor, 0);
 
@@ -1662,7 +1672,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 					, _blitter.m_program
 					, 0
 					);
-				rce->setRenderPipelineState(pso->m_rps);
+				setRenderPipelineState(pso->m_rps);
 
 				const uint32_t vertexUniformBufferSize   = pso->m_vshConstantBufferSize;
 				const uint32_t fragmentUniformBufferSize = pso->m_fshConstantBufferSize;
@@ -1679,12 +1689,12 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 
 				if (vertexUniformBufferSize)
 				{
-					rce->setVertexBuffer(sbo.buffer, sbo.offsets[0], 0);
+					setVertexUniformBuffer(sbo.buffer, sbo.offsets[0]);
 				}
 
 				if (0 != fragmentUniformBufferSize)
 				{
-					rce->setFragmentBuffer(sbo.buffer, sbo.offsets[1], 0);
+					setFragmentUniformBuffer(sbo.buffer, sbo.offsets[1]);
 				}
 
 				m_textures[_blitter.m_texture.idx].commit(0, false, true);
@@ -1938,7 +1948,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 						;
 				}
 
-				m_renderCommandEncoder = m_commandBuffer->renderCommandEncoder(renderPassDescriptor);
+				setRenderCommandEncoder(m_commandBuffer->renderCommandEncoder(renderPassDescriptor) );
 				MTL_RELEASE(renderPassDescriptor, 0);
 
 				if (m_depthClamp)
@@ -2095,7 +2105,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 				, _clearQuad.m_program[numMrt-1]
 				, 0
 				);
-			m_renderCommandEncoder->setRenderPipelineState(pso->m_rps);
+			setRenderPipelineState(pso->m_rps);
 
 			const uint32_t vertexUniformBufferSize   = pso->m_vshConstantBufferSize;
 			const uint32_t fragmentUniformBufferSize = pso->m_fshConstantBufferSize;
@@ -2144,12 +2154,12 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 
 			if (0 != vertexUniformBufferSize)
 			{
-				m_renderCommandEncoder->setVertexBuffer(sbo.buffer, sbo.offsets[0], 0);
+				setVertexUniformBuffer(sbo.buffer, sbo.offsets[0]);
 			}
 
 			if (fragmentUniformBufferSize)
 			{
-				m_renderCommandEncoder->setFragmentBuffer(sbo.buffer, sbo.offsets[1], 0);
+				setFragmentUniformBuffer(sbo.buffer, sbo.offsets[1]);
 			}
 
 			const VertexBufferMtl& vb = m_vertexBuffers[_clearQuad.m_vb.idx];
@@ -2344,7 +2354,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 
 			_stencil &= kStencilNoRefMask;
 
-			bx::HashMurmur2A murmur;
+			bx::HashMurmur3 murmur;
 			murmur.begin();
 			murmur.add(_state);
 			murmur.add(_stencil);
@@ -2609,15 +2619,49 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 				| BGFX_STATE_BLEND_INDEPENDENT
 				| BGFX_STATE_MSAA
 				| BGFX_STATE_BLEND_ALPHA_TO_COVERAGE
+				| BGFX_STATE_PT_MASK
 				);
 
 			const bool independentBlendEnable = !!(BGFX_STATE_BLEND_INDEPENDENT & _state);
+			const uint32_t rgba = independentBlendEnable ? _rgba : 0;
+
+			if (NULL != m_lastPso
+			&&  m_lastPsoState.m_state           == _state
+			&&  m_lastPsoState.m_rgba            == rgba
+			&&  m_lastPsoState.m_program         == _program.idx
+			&&  m_lastPsoState.m_fbh             == _fbh.idx
+			&&  m_lastPsoState.m_numStreams      == _numStreams
+			&&  m_lastPsoState.m_numInstanceData == _numInstanceData)
+			{
+				bool match = true;
+				for (uint8_t ii = 0; ii < _numStreams && match; ++ii)
+				{
+					match = _layouts[ii] == m_lastPsoState.m_layouts[ii];
+				}
+
+				if (match)
+				{
+					return m_lastPso;
+				}
+			}
+
+			m_lastPsoState.m_state           = _state;
+			m_lastPsoState.m_rgba            = rgba;
+			m_lastPsoState.m_program         = _program.idx;
+			m_lastPsoState.m_fbh             = _fbh.idx;
+			m_lastPsoState.m_numStreams      = _numStreams;
+			m_lastPsoState.m_numInstanceData = _numInstanceData;
+			for (uint8_t ii = 0; ii < _numStreams; ++ii)
+			{
+				m_lastPsoState.m_layouts[ii] = _layouts[ii];
+			}
+
 			const ProgramMtl& program = m_program[_program.idx];
 
-			bx::HashMurmur2A murmur;
+			bx::HashMurmur3 murmur;
 			murmur.begin();
 			murmur.add(_state);
-			murmur.add(independentBlendEnable ? _rgba : 0);
+			murmur.add(rgba);
 			murmur.add(_numInstanceData);
 
 			if (!isValid(_fbh) )
@@ -2783,6 +2827,12 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 					: NULL
 					);
 
+				pd->setInputPrimitiveTopology(
+						  BGFX_STATE_PT_POINTS == (_state & BGFX_STATE_PT_MASK)
+						? MTL::PrimitiveTopologyClassPoint
+						: MTL::PrimitiveTopologyClassUnspecified
+						);
+
 				MTL::VertexDescriptor* vertexDesc = m_vertexDescriptor;
 				reset(vertexDesc);
 
@@ -2831,6 +2881,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 					}
 				}
 
+				bool usedFallbackAttrib = false;
 				for (uint32_t ii = 0; Attrib::Count != program.m_used[ii]; ++ii)
 				{
 					const Attrib::Enum attr = Attrib::Enum(program.m_used[ii]);
@@ -2841,7 +2892,18 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 						vertexDesc->attributes()->object(loc)->setFormat(MTL::VertexFormatUChar2);
 						vertexDesc->attributes()->object(loc)->setBufferIndex(1);
 						vertexDesc->attributes()->object(loc)->setOffset(0);
+						usedFallbackAttrib = true;
 					}
+				}
+
+				MTL::VertexBufferLayoutDescriptor* vbld = vertexDesc->layouts()->object(1);
+
+				if (usedFallbackAttrib
+				&&  0 == vbld->stride() )
+				{
+					vbld->setStride(4);
+					vbld->setStepFunction(MTL::VertexStepFunctionConstant);
+					vbld->setStepRate(0);
 				}
 
 				if (0 < _numInstanceData)
@@ -2890,6 +2952,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 				m_pipelineProgram.push_back({hash, _program});
 			}
 
+			m_lastPso = pso;
 			return pso;
 		}
 
@@ -3012,6 +3075,49 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 			return m_blitCommandEncoder;
 		}
 
+		void setRenderCommandEncoder(MTL::RenderCommandEncoder* _rce)
+		{
+			m_renderCommandEncoder = _rce;
+			m_rps      = NULL;
+			m_vsBuffer = NULL;
+			m_fsBuffer = NULL;
+		}
+
+		void setRenderPipelineState(MTL::RenderPipelineState* _rps)
+		{
+			if (m_rps != _rps)
+			{
+				m_rps = _rps;
+				m_renderCommandEncoder->setRenderPipelineState(_rps);
+			}
+		}
+
+		void setVertexUniformBuffer(MTL::Buffer* _buffer, uint32_t _offset)
+		{
+			if (m_vsBuffer != _buffer)
+			{
+				m_vsBuffer = _buffer;
+				m_renderCommandEncoder->setVertexBuffer(_buffer, _offset, 0);
+			}
+			else
+			{
+				m_renderCommandEncoder->setVertexBufferOffset(_offset, 0);
+			}
+		}
+
+		void setFragmentUniformBuffer(MTL::Buffer* _buffer, uint32_t _offset)
+		{
+			if (m_fsBuffer != _buffer)
+			{
+				m_fsBuffer = _buffer;
+				m_renderCommandEncoder->setFragmentBuffer(_buffer, _offset, 0);
+			}
+			else
+			{
+				m_renderCommandEncoder->setFragmentBufferOffset(_offset, 0);
+			}
+		}
+
 		MTL::RenderCommandEncoder* getRenderCommandEncoder()
 		{
 			if (NULL == m_renderCommandEncoder)
@@ -3027,7 +3133,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 					: MTL::StoreActionStore
 					);
 
-				m_renderCommandEncoder = m_commandBuffer->renderCommandEncoder(renderPassDescriptor);
+				setRenderCommandEncoder(m_commandBuffer->renderCommandEncoder(renderPassDescriptor) );
 				MTL_RELEASE(renderPassDescriptor, 0);
 
 				if (m_depthClamp)
@@ -3044,7 +3150,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 			if (NULL != m_renderCommandEncoder)
 			{
 				m_renderCommandEncoder->endEncoding();
-				m_renderCommandEncoder = NULL;
+				setRenderCommandEncoder(NULL);
 			}
 
 			if (NULL != m_computeCommandEncoder)
@@ -3108,6 +3214,24 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 		StateCacheT<MTL::DepthStencilState*> m_depthStencilStateCache;
 		StateCacheT<MTL::SamplerState*>      m_samplerStateCache;
 
+		struct PipelineState
+		{
+			const VertexLayout* m_layouts[BGFX_CONFIG_MAX_VERTEX_STREAMS];
+			uint64_t            m_state;
+			uint32_t            m_rgba;
+			uint16_t            m_program;
+			uint16_t            m_fbh;
+			uint8_t             m_numStreams;
+			uint8_t             m_numInstanceData;
+		};
+
+		PipelineState m_lastPsoState;
+		PipelineStateMtl* m_lastPso = NULL;
+
+		MTL::RenderPipelineState* m_rps = NULL;
+		MTL::Buffer* m_vsBuffer = NULL;
+		MTL::Buffer* m_fsBuffer = NULL;
+
 		TextVideoMem m_textVideoMem;
 
 		FrameBufferHandle m_fbh;
@@ -3140,6 +3264,32 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 		MTL::ComputeCommandEncoder* m_computeCommandEncoder;
 		FrameBufferHandle           m_renderCommandEncoderFbh;
 	};
+
+	PipelineStateMtl* videoGetComputePipelineState(RendererContextMtl* _renderer, ProgramHandle _handle)
+	{
+		return _renderer->getComputePipelineState(_handle);
+	}
+
+	void videoEndEncoding(RendererContextMtl* _renderer)
+	{
+		_renderer->endEncoding();
+	}
+
+	MTL::CommandBuffer* videoEnsureCommandBuffer(RendererContextMtl* _renderer)
+	{
+		MTL::CommandBuffer* commandBuffer = _renderer->m_commandBuffer;
+		if (NULL == commandBuffer)
+		{
+			commandBuffer = _renderer->m_cmd.alloc();
+			_renderer->m_commandBuffer = commandBuffer;
+		}
+		return commandBuffer;
+	}
+
+	MTL::SamplerState* videoGetSamplerState(RendererContextMtl* _renderer, uint64_t _samplerFlags)
+	{
+		return _renderer->getSamplerState(_samplerFlags);
+	}
 
 	void ChunkedScratchBufferMtl::createUniform(uint32_t _chunkSize, uint32_t _numChunks)
 	{
@@ -3284,13 +3434,11 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 			, getShaderTypeName(magic)
 			);
 
-		bx::HashMurmur2A murmur;
+		bx::HashMurmur3 murmur;
 		murmur.begin();
 		murmur.add(hashIn);
 		murmur.add(hashOut);
 		murmur.add(code, shaderSize);
-//		murmur.add(numAttrs);
-//		murmur.add(m_attrMask, numAttrs);
 		m_hash = murmur.end();
 	}
 
@@ -3513,6 +3661,8 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 			const uint32_t msaaQuality = bx::satSub<uint32_t>(uint32_t( (_flags&BGFX_TEXTURE_RT_MSAA_MASK) >> BGFX_TEXTURE_RT_MSAA_SHIFT ), 1u);
 			const int32_t  sampleCount = s_msaa[msaaQuality];
 
+			const bool isVideoDecodeDst = 0 != (_flags & BGFX_TEXTURE_INTERNAL_VIDEO_DECODE_DST);
+
 			const TextureFormatInfo& tfi = s_textureFormat[m_textureFormat];
 
 			MTL::PixelFormat format = MTL::PixelFormatInvalid;
@@ -3555,8 +3705,9 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 
 				MTL::TextureUsage usage = 0
 					|                 MTL::TextureUsageShaderRead
-					| (computeWrite ? MTL::TextureUsageShaderWrite  : 0)
-					| (renderTarget ? MTL::TextureUsageRenderTarget : 0)
+					| (computeWrite    ? MTL::TextureUsageShaderWrite  : 0)
+					| (isVideoDecodeDst? MTL::TextureUsageShaderWrite  : 0)
+					| (renderTarget    ? MTL::TextureUsageRenderTarget : 0)
 					;
 
 				desc->setUsage(usage);
@@ -3591,6 +3742,29 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 			{
 				desc->setPixelFormat(MTL::PixelFormatStencil8);
 				m_ptrStencil = s_renderMtl->m_device->newTexture(desc);
+			}
+
+			if (isVideoDecodeDst)
+			{
+				BX_ASSERT(imageContainer.m_size >= sizeof(VideoDecoderInit)
+					, "VIDEO_DECODE_DST texture: Memory too small for VideoDecoderInit (got %d, want %zu)."
+					, imageContainer.m_size
+					, sizeof(VideoDecoderInit)
+					);
+				const VideoDecoderInit* init = (const VideoDecoderInit*)imageContainer.m_data;
+				BX_ASSERT(kVideoDecoderInitMagic == init->magic
+					, "VIDEO_DECODE_DST texture: bad VideoDecoderInit magic (0x%08x)."
+					, init->magic
+					);
+
+				m_videoDecoder = videoDecoderCreate(*init, s_renderMtl, s_renderMtl->m_device, uint16_t(ti.width), uint16_t(ti.height) );
+				if (NULL == m_videoDecoder)
+				{
+					BX_TRACE("Failed to initialize hardware video decoder.");
+				}
+
+				MTL_RELEASE(desc, 0);
+				return;
 			}
 
 			uint8_t* temp = NULL;
@@ -3681,6 +3855,9 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 
 	void TextureMtl::destroy()
 	{
+		videoDecoderDestroy(m_videoDecoder);
+		m_videoDecoder = NULL;
+
 		if (0 == (m_flags & BGFX_SAMPLER_INTERNAL_SHARED) )
 		{
 			MTL_RELEASE_W(m_ptr, 0);
@@ -3711,6 +3888,25 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 
 	void TextureMtl::update(uint8_t _side, uint8_t _mip, const Rect& _rect, uint16_t _z, uint16_t _depth, uint16_t _pitch, const Memory* _mem)
 	{
+		if (0 != (m_flags & BGFX_TEXTURE_INTERNAL_VIDEO_DECODE_DST) )
+		{
+			BX_ASSERT(_mem->size >= sizeof(VideoDecoderFrame)
+				, "VIDEO_DECODE_DST update: Memory too small for VideoDecoderFrame (got %d, want %zu)."
+				, _mem->size
+				, sizeof(VideoDecoderFrame)
+				);
+			const VideoDecoderFrame* frame = (const VideoDecoderFrame*)_mem->data;
+			BX_ASSERT(kVideoDecoderFrameMagic == frame->magic
+				, "VIDEO_DECODE_DST update: bad VideoDecoderFrame magic (0x%08x)."
+				, frame->magic
+				);
+			if (NULL != m_videoDecoder)
+			{
+				videoDecoderDecode(m_videoDecoder, *frame, m_ptr);
+			}
+			return;
+		}
+
 		const uint32_t bpp       = bimg::getBitsPerPixel(bimg::TextureFormat::Enum(m_textureFormat) );
 		uint32_t rectpitch  = _rect.m_width*bpp/8;
 		if (bimg::isCompressed(bimg::TextureFormat::Enum(m_textureFormat) ) )
@@ -4160,6 +4356,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 				, _width
 				, _height
 				);
+			BX_UNUSED(actualSize);
 		}
 
 		MTL::TextureDescriptor* desc = newTextureDescriptor();
@@ -4222,7 +4419,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 
 		MTL_RELEASE(desc, 0);
 
-		bx::HashMurmur2A murmur;
+		bx::HashMurmur3 murmur;
 		murmur.begin();
 		murmur.add(1);
 		murmur.add(m_metalLayer->pixelFormat() );
@@ -4318,7 +4515,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 			}
 		}
 
-		bx::HashMurmur2A murmur;
+		bx::HashMurmur3 murmur;
 		murmur.begin();
 		murmur.add(m_num);
 
@@ -4533,9 +4730,16 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 		ra.clear();
 	}
 
+	static constexpr uint64_t kNanosecondsPerSecond = UINT64_C(1000000000);
+
 	void TimerQueryMtl::init()
 	{
-		m_frequency = bx::getHPFrequency();
+		m_frequency = kNanosecondsPerSecond;
+
+		for (uint32_t ii = 0; ii < BX_COUNTOF(m_result); ++ii)
+		{
+			m_result[ii].reset();
+		}
 	}
 
 	void TimerQueryMtl::shutdown()
@@ -4544,19 +4748,13 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 
 	uint32_t TimerQueryMtl::begin(uint32_t _resultIdx, uint32_t _frameNum)
 	{
-		BX_UNUSED(_resultIdx);
-		BX_UNUSED(_frameNum);
+		BX_UNUSED(_resultIdx, _frameNum);
 		return 0;
 	}
 
 	void TimerQueryMtl::end(uint32_t _idx)
 	{
 		BX_UNUSED(_idx);
-	}
-
-	static void setTimestamp(void* _data)
-	{
-		*( (int64_t*)_data) = bx::getHPCounter();
 	}
 
 	void TimerQueryMtl::addHandlers(MTL::CommandBuffer*& _commandBuffer)
@@ -4566,14 +4764,18 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 			m_control.consume(1);
 		}
 
-		uint32_t offset = m_control.m_current;
+		const uint32_t offset = m_control.m_current;
 
-		_commandBuffer->addScheduledHandler(
-			MTL::HandlerFunction([pBegin = &m_result[offset].m_begin](MTL::CommandBuffer*) { setTimestamp(pBegin); })
-			);
 		_commandBuffer->addCompletedHandler(
-			MTL::HandlerFunction([pEnd = &m_result[offset].m_end](MTL::CommandBuffer*) { setTimestamp(pEnd); })
+			MTL::HandlerFunction([this, offset](MTL::CommandBuffer* _cmdBuf)
+			{
+				const double gpuBegin = _cmdBuf->GPUStartTime();
+				const double gpuEnd   = _cmdBuf->GPUEndTime();
+				m_result[offset].m_begin = uint64_t(gpuBegin * double(kNanosecondsPerSecond) );
+				m_result[offset].m_end   = uint64_t(gpuEnd   * double(kNanosecondsPerSecond) );
+			})
 			);
+
 		m_control.commit(1);
 	}
 
@@ -4582,8 +4784,8 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 		if (0 != m_control.getNumUsed() )
 		{
 			uint32_t offset = m_control.m_read;
-			m_begin = m_result[offset].m_begin;
-			m_end   = m_result[offset].m_end;
+			m_begin   = m_result[offset].m_begin;
+			m_end     = m_result[offset].m_end;
 			m_elapsed = m_end - m_begin;
 
 			m_control.consume(1);
@@ -4769,12 +4971,10 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 		int64_t timeBegin = bx::getHPCounter();
 		int64_t captureElapsed = 0;
 
-		m_gpuTimer.addHandlers(m_commandBuffer);
-
 		if (m_blitCommandEncoder)
 		{
 			m_blitCommandEncoder->endEncoding();
-			m_blitCommandEncoder = 0;
+			m_blitCommandEncoder = NULL;
 		}
 
 		updateResolution(_render->m_resolution);
@@ -4875,6 +5075,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 
 		MTL::RenderCommandEncoder* rce = NULL;
 		PipelineStateMtl* currentPso = NULL;
+		m_lastPso = NULL;
 
 		bool wasCompute     = false;
 		bool viewHasScissor = false;
@@ -4914,7 +5115,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 
 				const uint32_t itemIdx       = _render->m_sortValues[item];
 				const RenderItem& renderItem = _render->m_renderItem[itemIdx];
-				const RenderBind& renderBind = _render->m_renderItemBind[itemIdx];
+				const RenderBind& renderBind = _render->m_renderBind[isCompute ? renderItem.compute.m_bindIdx : renderItem.draw.m_bindIdx];
 				++item;
 
 				if (viewChanged
@@ -5099,7 +5300,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 							}
 
 							rce = m_commandBuffer->renderCommandEncoder(renderPassDescriptor);
-							m_renderCommandEncoder = rce;
+							setRenderCommandEncoder(rce);
 							m_renderCommandEncoderFbh = fbh;
 
 							MTL_RELEASE(renderPassDescriptor, 0);
@@ -5473,6 +5674,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 				   | BGFX_STATE_BLEND_INDEPENDENT
 				   | BGFX_STATE_MSAA
 				   | BGFX_STATE_BLEND_ALPHA_TO_COVERAGE
+				   | BGFX_STATE_PT_MASK
 				   ) & changedFlags
 				|| ( (blendFactor != draw.m_rgba) && !!(newFlags & BGFX_STATE_BLEND_INDEPENDENT) ) )
 				{
@@ -5488,35 +5690,38 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 					uint32_t numVertices = draw.m_numVertices;
 					uint8_t  numStreams  = 0;
 
-					for (BitMaskToIndexIteratorT it(draw.m_streamMask)
-						; !it.isDone()
-						; it.next(), numStreams++
-						)
+					if (UINT32_MAX != draw.m_streamMask)
 					{
-						const uint8_t idx = it.idx;
+						for (BitMaskToIndexIteratorT it(draw.m_streamMask)
+							; !it.isDone()
+							; it.next(), numStreams++
+							)
+						{
+							const uint8_t idx = it.idx;
 
-						currentState.m_stream[idx].m_layoutHandle   = draw.m_stream[idx].m_layoutHandle;
-						currentState.m_stream[idx].m_handle         = draw.m_stream[idx].m_handle;
-						currentState.m_stream[idx].m_startVertex    = draw.m_stream[idx].m_startVertex;
+							currentState.m_stream[idx].m_layoutHandle   = draw.m_stream[idx].m_layoutHandle;
+							currentState.m_stream[idx].m_handle         = draw.m_stream[idx].m_handle;
+							currentState.m_stream[idx].m_startVertex    = draw.m_stream[idx].m_startVertex;
 
-						const uint16_t handle = draw.m_stream[idx].m_handle.idx;
-						const VertexBufferMtl& vb = m_vertexBuffers[handle];
-						const uint16_t decl = isValid(draw.m_stream[idx].m_layoutHandle)
-							? draw.m_stream[idx].m_layoutHandle.idx
-							: vb.m_layoutHandle.idx;
-						const VertexLayout& layout = m_vertexLayouts[decl];
-						const uint32_t stride = layout.m_stride;
+							const uint16_t handle = draw.m_stream[idx].m_handle.idx;
+							const VertexBufferMtl& vb = m_vertexBuffers[handle];
+							const uint16_t decl = isValid(draw.m_stream[idx].m_layoutHandle)
+								? draw.m_stream[idx].m_layoutHandle.idx
+								: vb.m_layoutHandle.idx;
+							const VertexLayout& layout = m_vertexLayouts[decl];
+							const uint32_t stride = layout.m_stride;
 
-						layouts[numStreams] = &layout;
+							layouts[numStreams] = &layout;
 
-						numVertices = bx::min(UINT32_MAX == draw.m_numVertices
-							? vb.m_size/stride
-							: draw.m_numVertices
-							, numVertices
-							);
-						const uint32_t offset = draw.m_stream[idx].m_startVertex * stride;
+							numVertices = bx::min(UINT32_MAX == draw.m_numVertices
+								? vb.m_size/stride
+								: draw.m_numVertices
+								, numVertices
+								);
+							const uint32_t offset = draw.m_stream[idx].m_startVertex * stride;
 
-						rce->setVertexBuffer(vb.m_ptr, offset, idx+1);
+							rce->setVertexBuffer(vb.m_ptr, offset, numStreams+1);
+						}
 					}
 
 					if (!isValid(currentProgram) )
@@ -5526,7 +5731,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 
 					currentPso = NULL;
 
-					if (0 < numStreams)
+					if (0 != draw.m_streamMask)
 					{
 						currentPso = getPipelineState(
 								newFlags
@@ -5539,13 +5744,14 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 							);
 					}
 
-					if (NULL == currentPso)
+					if (NULL == currentPso
+					||  NULL == currentPso->m_rps)
 					{
 						currentProgram = BGFX_INVALID_HANDLE;
 						continue;
 					}
 
-					rce->setRenderPipelineState(currentPso->m_rps);
+					setRenderPipelineState(currentPso->m_rps);
 
 					if (isValid(draw.m_instanceDataBuffer) )
 					{
@@ -5583,12 +5789,12 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 
 						if (0 != vertexUniformBufferSize)
 						{
-							rce->setVertexBuffer(sbo.buffer, sbo.offsets[0], 0);
+							setVertexUniformBuffer(sbo.buffer, sbo.offsets[0]);
 						}
 
 						if (0 != fragmentUniformBufferSize)
 						{
-							rce->setFragmentBuffer(sbo.buffer, sbo.offsets[1], 0);
+							setFragmentUniformBuffer(sbo.buffer, sbo.offsets[1]);
 						}
 					}
 				}
@@ -5695,10 +5901,14 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 
 					if (UINT32_MAX == numVertices)
 					{
-						const VertexBufferMtl& vb = m_vertexBuffers[currentState.m_stream[0].m_handle.idx];
-						uint16_t decl = isValid(draw.m_stream[0].m_layoutHandle) ? draw.m_stream[0].m_layoutHandle.idx : vb.m_layoutHandle.idx;
-						const VertexLayout& layout = m_vertexLayouts[decl];
-						numVertices = vb.m_size/layout.m_stride;
+						for (BitMaskToIndexIteratorT it(currentState.m_streamMask); !it.isDone(); it.next() )
+						{
+							const uint8_t idx = it.idx;
+							const VertexBufferMtl& vb = m_vertexBuffers[currentState.m_stream[idx].m_handle.idx];
+							const uint16_t decl = isValid(draw.m_stream[idx].m_layoutHandle) ? draw.m_stream[idx].m_layoutHandle.idx : vb.m_layoutHandle.idx;
+							const VertexLayout& layout = m_vertexLayouts[decl];
+							numVertices = bx::min(numVertices, vb.m_size/layout.m_stride);
+						}
 					}
 
 					uint32_t numIndices        = 0;
@@ -5930,10 +6140,11 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 					);
 
 				double elapsedCpuMs = double(frameTime)*toMs;
-				tvm.printf(10, pos++, 0x8b, "    Submitted: %4d (draw %4d, compute %4d) / CPU %3.4f [ms] %c GPU %3.4f [ms] (latency %d)"
+				tvm.printf(10, pos++, 0x8b, "    Submitted: %5d (draw %5d, compute %4d) / Binds: %4d / CPU %3.4f [ms] %c GPU %3.4f [ms] (latency %d)"
 					, _render->m_numRenderItems
 					, statsKeyType[0]
 					, statsKeyType[1]
+					, _render->m_numRenderBinds
 					, elapsedCpuMs
 					, elapsedCpuMs > maxGpuElapsed ? '>' : '<'
 					, maxGpuElapsed
@@ -6039,6 +6250,8 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 
 		if (NULL != m_commandBuffer)
 		{
+			m_gpuTimer.addHandlers(m_commandBuffer);
+
 			m_cmd.kick(true, false);
 			m_commandBuffer = NULL;
 		}

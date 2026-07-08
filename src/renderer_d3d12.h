@@ -13,6 +13,7 @@
 
 #if BX_PLATFORM_LINUX || BX_PLATFORM_WINDOWS || BX_PLATFORM_WINRT
 #   include <d3d12.h>
+#   include <d3d12video.h>
 #else
 #   if !BGFX_CONFIG_DEBUG
 #      define D3DCOMPILE_NO_DEBUG 1
@@ -107,6 +108,13 @@ namespace bgfx { namespace d3d12
 	{
 	public:
 		ScratchBufferD3D12()
+			: m_heap(NULL)
+			, m_incrementSize(0)
+			, m_size(0)
+			, m_max(0)
+			, m_pos(0)
+			, m_high(0)
+			, m_overflow(false)
 		{
 		}
 
@@ -114,7 +122,7 @@ namespace bgfx { namespace d3d12
 		{
 		}
 
-		void create(uint32_t _maxDescriptors);
+		void create(uint32_t _maxDescriptors, uint32_t _initDescriptors);
 		void destroy();
 		void reset(D3D12_GPU_DESCRIPTOR_HANDLE& _gpuHandle);
 
@@ -124,7 +132,10 @@ namespace bgfx { namespace d3d12
 		void  allocSrv(D3D12_GPU_DESCRIPTOR_HANDLE& _gpuHandle, struct BufferD3D12& _buffer);
 
 		void  allocUav(D3D12_GPU_DESCRIPTOR_HANDLE& _gpuHandle, struct TextureD3D12& _texture, uint8_t _mip = 0);
+		void  allocSrv(D3D12_GPU_DESCRIPTOR_HANDLE& _gpuHandle, ID3D12Resource* _resource, const D3D12_SHADER_RESOURCE_VIEW_DESC& _desc);
+
 		void  allocUav(D3D12_GPU_DESCRIPTOR_HANDLE& _gpuHandle, struct BufferD3D12& _buffer);
+		void  allocUav(D3D12_GPU_DESCRIPTOR_HANDLE& _gpuHandle, ID3D12Resource* _resource, const D3D12_UNORDERED_ACCESS_VIEW_DESC& _desc);
 
 		void  allocSrvArray(D3D12_GPU_DESCRIPTOR_HANDLE& _gpuHandle, struct TextureD3D12& _texture, uint32_t _numSlices);
 		void  allocUavArray(D3D12_GPU_DESCRIPTOR_HANDLE& _gpuHandle, struct TextureD3D12& _texture, uint8_t _mip, uint32_t _numSlices);
@@ -135,10 +146,20 @@ namespace bgfx { namespace d3d12
 		}
 
 	private:
+		void allocHeap(uint32_t _num);
+		bool alloc(D3D12_GPU_DESCRIPTOR_HANDLE& _gpuHandle, D3D12_CPU_DESCRIPTOR_HANDLE& _cpuHandle);
+
 		ID3D12DescriptorHeap* m_heap;
 		D3D12_CPU_DESCRIPTOR_HANDLE m_cpuHandle;
 		D3D12_GPU_DESCRIPTOR_HANDLE m_gpuHandle;
+		D3D12_CPU_DESCRIPTOR_HANDLE m_cpuHandleStart;
+		D3D12_GPU_DESCRIPTOR_HANDLE m_gpuHandleStart;
 		uint32_t m_incrementSize;
+		uint32_t m_size;
+		uint32_t m_max;
+		uint32_t m_pos;
+		uint32_t m_high;
+		bool m_overflow;
 	};
 
 	struct ChunkedScratchBufferOffset
@@ -325,6 +346,8 @@ namespace bgfx { namespace d3d12
 		uint8_t m_numPredefined;
 	};
 
+	struct VideoDecoderD3D12;
+
 	struct TextureD3D12
 	{
 		enum Enum
@@ -341,9 +364,11 @@ namespace bgfx { namespace d3d12
 			, m_directAccessPtr(NULL)
 			, m_state(D3D12_RESOURCE_STATE_COMMON)
 			, m_numMips(0)
+			, m_videoDecoder(NULL)
 		{
 			bx::memSet(&m_srvd, 0, sizeof(m_srvd) );
 			bx::memSet(&m_uavd, 0, sizeof(m_uavd) );
+			m_srvHandle.ptr = 0;
 		}
 
 		void* create(const Memory* _mem, uint64_t _flags, uint8_t _skip, uint64_t _external);
@@ -355,6 +380,7 @@ namespace bgfx { namespace d3d12
 
 		D3D12_SHADER_RESOURCE_VIEW_DESC  m_srvd;
 		D3D12_UNORDERED_ACCESS_VIEW_DESC m_uavd;
+		D3D12_CPU_DESCRIPTOR_HANDLE m_srvHandle;
 		ID3D12Resource* m_ptr;
 		ID3D12Resource* m_singleMsaa;
 		HANDLE m_handle;
@@ -369,6 +395,7 @@ namespace bgfx { namespace d3d12
 		uint8_t m_requestedFormat;
 		uint8_t m_textureFormat;
 		uint8_t m_numMips;
+		VideoDecoderD3D12* m_videoDecoder;
 	};
 
 	struct FrameBufferD3D12
@@ -514,6 +541,7 @@ namespace bgfx { namespace d3d12
 			, m_maxDrawPerBatch(0)
 			, m_minIndirect(0)
 			, m_flushPerBatch(0)
+			, m_indirectAllocated(false)
 		{
 			bx::memSet(m_num, 0, sizeof(m_num) );
 		}
@@ -524,6 +552,8 @@ namespace bgfx { namespace d3d12
 
 		void create(uint32_t _maxDrawPerBatch);
 		void destroy();
+
+		void allocIndirectBuffers();
 
 		template<typename Ty>
 		Ty& getCmd(Enum _type);
@@ -576,11 +606,13 @@ namespace bgfx { namespace d3d12
 		BufferD3D12 m_indirect[32];
 		uint32_t m_currIndirect;
 		DrawIndexedIndirectCommand m_current;
+		uint8_t m_currentNumVbv;
 
 		Stats m_stats;
 		uint32_t m_maxDrawPerBatch;
 		uint32_t m_minIndirect;
 		uint32_t m_flushPerBatch;
+		bool m_indirectAllocated;
 	};
 
 	struct TimerQueryD3D12

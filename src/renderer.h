@@ -316,6 +316,17 @@ namespace bgfx
 					}
 					break;
 
+				case PredefinedUniform::IndirectArgBase:
+					{
+						const float base[4] = { bx::bitsToFloat(_draw.m_startIndex), 0.0f, 0.0f, 0.0f };
+						_renderer->setShaderUniform4f(flags
+							, predefined.m_loc
+							, base
+							, 1
+							);
+					}
+					break;
+
 				default:
 					BX_ASSERT(false, "predefined %d not handled", predefined.m_type);
 					break;
@@ -782,14 +793,18 @@ namespace bgfx
 			return true;
 		}
 
-		for (BitMaskToIndexIteratorT it(_new.m_streamMask); !it.isDone(); it.next() )
+		if (UINT32_MAX != _new.m_streamMask)
 		{
-			const uint8_t idx = it.idx;
-
-			if (_current.m_stream[idx].m_handle.idx  != _new.m_stream[idx].m_handle.idx
-			||  _current.m_stream[idx].m_startVertex != _new.m_stream[idx].m_startVertex)
+			for (BitMaskToIndexIteratorT it(_new.m_streamMask); !it.isDone(); it.next() )
 			{
-				return true;
+				const uint8_t idx = it.idx;
+
+				if (_current.m_stream[idx].m_handle.idx       != _new.m_stream[idx].m_handle.idx
+				||  _current.m_stream[idx].m_startVertex      != _new.m_stream[idx].m_startVertex
+				||  _current.m_stream[idx].m_layoutHandle.idx != _new.m_stream[idx].m_layoutHandle.idx)
+				{
+					return true;
+				}
 			}
 		}
 

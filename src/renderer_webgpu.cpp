@@ -357,6 +357,7 @@ namespace bgfx { namespace wgpu
 
 	static const char* s_adapterType[] =
 	{
+		/* WGPUAdapterType starts from 1 */ NULL,
 		"DiscreteGPU",
 		"IntegratedGPU",
 		"CPU",
@@ -392,6 +393,8 @@ namespace bgfx { namespace wgpu
 		{ LANGUAGE_FEATURE(UniformBufferStandardLayout),          true, false },
 		{ LANGUAGE_FEATURE(SubgroupId),                           true, false },
 		{ LANGUAGE_FEATURE(TextureAndSamplerLet),                 true, false },
+		{ LANGUAGE_FEATURE(SubgroupUniformity),                   true, false },
+		{ LANGUAGE_FEATURE(ImmediateAddressSpace),                true, false },
 		{ LANGUAGE_FEATURE(ChromiumTestingUnimplemented),         true, false },
 		{ LANGUAGE_FEATURE(ChromiumTestingUnsafeExperimental),    true, false },
 		{ LANGUAGE_FEATURE(ChromiumTestingExperimental),          true, false },
@@ -401,8 +404,6 @@ namespace bgfx { namespace wgpu
 		{ LANGUAGE_FEATURE(TexelBuffers),                         true, false },
 		{ LANGUAGE_FEATURE(ChromiumPrint),                        true, false },
 		{ LANGUAGE_FEATURE(FragmentDepth),                        true, false },
-		{ LANGUAGE_FEATURE(ImmediateAddressSpace),                true, false },
-		{ LANGUAGE_FEATURE(SubgroupUniformity),                   true, false },
 
 #undef LANGUAGE_FEATURE
 	};
@@ -887,6 +888,12 @@ WGPU_IMPORT
 			renderCtx->m_device = _device;
 		}
 
+		WGPUWaitStatus waitForFuture(WGPUFutureWaitInfo& _fwi)
+		{
+			wgpuInstanceProcessEvents(m_instance);
+			return wgpuInstanceWaitAny(m_instance, 1, &_fwi, UINT64_MAX);
+		}
+
 		bool init(const Init& _init)
 		{
 			struct ErrorState
@@ -923,6 +930,7 @@ WGPU_IMPORT
 
 			bool imported = true;
 
+#if !BX_PLATFORM_EMSCRIPTEN
 			m_webgpuDll = bx::dlopen(
 #if BX_PLATFORM_WINDOWS
 				"webgpu_dawn.dll"
@@ -970,12 +978,21 @@ WGPU_IMPORT
 				goto error;
 			}
 
+#else // BX_PLATFORM_EMSCRIPTEN
+			BX_TRACE("Emscripten: Using statically linked WebGPU.");
+			m_webgpuDll = NULL;
+			errorState = ErrorState::LoadedWebGPU;
+
+#endif // !BX_PLATFORM_EMSCRIPTEN
+
 			{
 				{
 					WGPUInstanceFeatureName requiredFeatures[] =
 					{
 						WGPUInstanceFeatureName_TimedWaitAny,
+#if !BX_PLATFORM_EMSCRIPTEN
 						WGPUInstanceFeatureName_ShaderSourceSPIRV,
+#endif // !BX_PLATFORM_EMSCRIPTEN
 					};
 
 					WGPUInstanceDescriptor instanceDesc =
@@ -1021,7 +1038,7 @@ WGPU_IMPORT
 						.completed = false,
 					};
 
-					WGPUWaitStatus waitStatus = wgpuInstanceWaitAny(m_instance, 1, &fwi, UINT64_MAX);
+					WGPUWaitStatus waitStatus = waitForFuture(fwi);
 
 					if (WGPUWaitStatus_Success != waitStatus
 					||  NULL == m_adapter)
@@ -1157,15 +1174,18 @@ WGPU_IMPORT
 
 					if (WGPUStatus_Success == status)
 					{
+#if !BX_PLATFORM_EMSCRIPTEN
 						requiredLimits.maxComputeWorkgroupSizeX = 1024;
 						requiredLimits.maxComputeWorkgroupSizeY = 1024;
 						requiredLimits.maxComputeWorkgroupSizeZ = 64;
+#endif // !BX_PLATFORM_EMSCRIPTEN
 					}
 
 					static constexpr uint32_t kMaxEnabledTogles = 10;
 					const char* enabledToggles[kMaxEnabledTogles];
 					uint32_t enabledTogglesCount = 0;
 
+#if !BX_PLATFORM_EMSCRIPTEN
 					enabledToggles[enabledTogglesCount++] = "allow_unsafe_apis"; // TimestampWrite requires this.
 
 					if (_init.debug)
@@ -1207,10 +1227,15 @@ WGPU_IMPORT
 						.disabledToggleCount = 0,
 						.disabledToggles     = NULL,
 					};
+#endif // !BX_PLATFORM_EMSCRIPTEN
 
 					WGPUDeviceDescriptor deviceDesc =
 					{
+#if BX_PLATFORM_EMSCRIPTEN
+						.nextInChain            = NULL,
+#else
 						.nextInChain            = &dawnTogglesDescriptor.chain,
+#endif // BX_PLATFORM_EMSCRIPTEN
 						.label                  = WGPU_STRING_VIEW_INIT,
 						.requiredFeatureCount   = requiredFeatureCount,
 						.requiredFeatures       = requiredFeatures,
@@ -1219,7 +1244,10 @@ WGPU_IMPORT
 						.deviceLostCallbackInfo =
 							{
 								.nextInChain = NULL,
-								.mode        = WGPUCallbackMode_WaitAnyOnly,
+								.mode        = BX_ENABLED(BX_PLATFORM_EMSCRIPTEN)
+									? WGPUCallbackMode_AllowSpontaneous
+									: WGPUCallbackMode_WaitAnyOnly
+									,
 								.callback    = deviceLostCb,
 								.userdata1   = this,
 								.userdata2   = NULL,
@@ -1246,7 +1274,7 @@ WGPU_IMPORT
 						.completed = false,
 					};
 
-					WGPUWaitStatus waitStatus = wgpuInstanceWaitAny(m_instance, 1, &fwi, UINT64_MAX);
+					WGPUWaitStatus waitStatus = waitForFuture(fwi);
 
 					if (WGPUWaitStatus_Success != waitStatus
 					||  NULL == m_device)
@@ -1465,6 +1493,8 @@ WGPU_IMPORT
 		{
 			preReset();
 
+			invalidateBindGroupCache();
+
 			for (uint32_t ii = 0; ii < BX_COUNTOF(m_mipGenStubTextureView); ++ii)
 			{
 				if (NULL != m_mipGenStubTextureView[ii])
@@ -1562,6 +1592,7 @@ WGPU_IMPORT
 
 		void destroyIndexBuffer(IndexBufferHandle _handle) override
 		{
+			invalidateBindGroupCache();
 			m_indexBuffers[_handle.idx].destroy();
 		}
 
@@ -1583,6 +1614,7 @@ WGPU_IMPORT
 
 		void destroyVertexBuffer(VertexBufferHandle _handle) override
 		{
+			invalidateBindGroupCache();
 			m_vertexBuffers[_handle.idx].destroy();
 		}
 
@@ -1598,6 +1630,7 @@ WGPU_IMPORT
 
 		void destroyDynamicIndexBuffer(IndexBufferHandle _handle) override
 		{
+			invalidateBindGroupCache();
 			m_indexBuffers[_handle.idx].destroy();
 		}
 
@@ -1614,6 +1647,7 @@ WGPU_IMPORT
 
 		void destroyDynamicVertexBuffer(VertexBufferHandle _handle) override
 		{
+			invalidateBindGroupCache();
 			m_vertexBuffers[_handle.idx].destroy();
 		}
 
@@ -1818,6 +1852,7 @@ WGPU_IMPORT
 
 		void destroyTexture(TextureHandle _handle) override
 		{
+			invalidateBindGroupCache();
 			m_textures[_handle.idx].destroy();
 		}
 
@@ -1845,6 +1880,8 @@ WGPU_IMPORT
 
 		void destroyFrameBuffer(FrameBufferHandle _handle) override
 		{
+			invalidateBindGroupCache();
+
 			FrameBufferWGPU& frameBuffer = m_frameBuffers[_handle.idx];
 
 			uint16_t denseIdx = frameBuffer.destroy();
@@ -2197,6 +2234,16 @@ WGPU_IMPORT
 			m_renderPipelineCache.invalidate();
 			m_textureViewStateCache.invalidate();
 			m_samplerStateCache.invalidate();
+		}
+
+		void invalidateBindGroupCache()
+		{
+			for (BindGroupMap::iterator it = m_bindGroupMap.begin(), end = m_bindGroupMap.end(); it != end; ++it)
+			{
+				release(it->second);
+			}
+
+			m_bindGroupMap.clear();
 		}
 
 		bool updateResolution(const Resolution& _resolution)
@@ -2710,11 +2757,15 @@ WGPU_IMPORT
 			const uint8_t numVertexStreams = bx::countBits(_streamMask);
 
 			VertexLayout layout;
-			if (0 < numVertexStreams)
+			bx::memSet(&layout, 0, sizeof(layout) );
+
+			if (0 < numVertexStreams
+			&&  UINT32_MAX != _streamMask)
 			{
-				const uint16_t layoutIdx = isValid(_stream[0].m_layoutHandle)
-					? _stream[0].m_layoutHandle.idx
-					: m_vertexBuffers[_stream[0].m_handle.idx].m_layoutHandle.idx
+				const uint8_t firstStream = BitMaskToIndexIteratorT(_streamMask).idx;
+				const uint16_t layoutIdx = isValid(_stream[firstStream].m_layoutHandle)
+					? _stream[firstStream].m_layoutHandle.idx
+					: m_vertexBuffers[_stream[firstStream].m_handle.idx].m_layoutHandle.idx
 					;
 
 				bx::memCopy(&layout, &m_vertexLayouts[layoutIdx], sizeof(VertexLayout) );
@@ -2728,12 +2779,20 @@ WGPU_IMPORT
 				}
 			}
 
-			bx::HashMurmur2A murmur;
+			bx::HashMurmur3 murmur;
 			murmur.begin();
 			murmur.add(_state);
 			murmur.add(!!(BGFX_STATE_BLEND_INDEPENDENT & _state) ? _rgba : 0);
 			murmur.add(_stencil);
-			murmur.add(&_renderBind.m_bind, sizeof(_renderBind.m_bind) );
+
+			for (uint32_t stage = 0; stage < BGFX_CONFIG_MAX_TEXTURE_SAMPLERS; ++stage)
+			{
+				if (isValid(program.m_shaderBinding[stage].uniformHandle) )
+				{
+					murmur.add(&_renderBind.m_bind[stage], sizeof(_renderBind.m_bind[stage]) );
+				}
+			}
+
 			murmur.add(program.m_vsh->m_hash);
 			murmur.add(program.m_vsh->m_attrMask, sizeof(program.m_vsh->m_attrMask) );
 
@@ -2742,17 +2801,20 @@ WGPU_IMPORT
 				murmur.add(program.m_fsh->m_hash);
 			}
 
-			for (BitMaskToIndexIteratorT it(_streamMask); !it.isDone(); it.next() )
+			if (UINT32_MAX != _streamMask)
 			{
-				const uint8_t idx = it.idx;
+				for (BitMaskToIndexIteratorT it(_streamMask); !it.isDone(); it.next() )
+				{
+					const uint8_t idx = it.idx;
 
-				uint16_t handle = _stream[idx].m_handle.idx;
-				const VertexBufferWGPU& vb = m_vertexBuffers[handle];
-				const uint16_t layoutIdx = isValid(_stream[idx].m_layoutHandle)
-					? _stream[idx].m_layoutHandle.idx
-					: vb.m_layoutHandle.idx;
+					uint16_t handle = _stream[idx].m_handle.idx;
+					const VertexBufferWGPU& vb = m_vertexBuffers[handle];
+					const uint16_t layoutIdx = isValid(_stream[idx].m_layoutHandle)
+						? _stream[idx].m_layoutHandle.idx
+						: vb.m_layoutHandle.idx;
 
-				murmur.add(m_vertexLayouts[layoutIdx].m_hash);
+					murmur.add(m_vertexLayouts[layoutIdx].m_hash);
+				}
 			}
 
 			murmur.add(layout.m_attributes, sizeof(layout.m_attributes) );
@@ -2804,7 +2866,7 @@ WGPU_IMPORT
 
 						bx::memCopy(&layout, &m_vertexLayouts[layoutIdx], sizeof(VertexLayout) );
 
-						const bool lastStream = idx == uint32_t(numVertexStreams-1);
+						const bool lastStream = numStreams == uint32_t(numVertexStreams-1);
 
 						for (uint32_t ii = 0; ii < Attrib::Count; ++ii)
 						{
@@ -2824,7 +2886,7 @@ WGPU_IMPORT
 
 						WGPUVertexAttribute* last = fillVertexLayout(program.m_vsh, elem, layout);
 
-						vertexBufferLayout[idx] =
+						vertexBufferLayout[numStreams] =
 						{
 							.nextInChain    = NULL,
 							.stepMode       = WGPUVertexStepMode_Vertex,
@@ -3036,7 +3098,8 @@ WGPU_IMPORT
 				const Binding& bind = _renderBind.m_bind[stage];
 				const ShaderBinding& shaderBind = _program.m_shaderBinding[stage];
 
-				if (isValid(shaderBind.uniformHandle) )
+				if (isValid(shaderBind.uniformHandle)
+				&&  kInvalidHandle != bind.m_idx)
 				{
 					switch (bind.m_type)
 					{
@@ -3318,6 +3381,9 @@ WGPU_IMPORT
 		StateCacheLru<RenderPipeline, 1024>  m_renderPipelineCache;
 		StateCacheT<WGPUTextureView>         m_textureViewStateCache;
 		StateCacheT<WGPUSampler>             m_samplerStateCache;
+
+		typedef stl::unordered_map<uint32_t, BindGroup> BindGroupMap;
+		BindGroupMap m_bindGroupMap;
 
 		void* m_uniforms[BGFX_CONFIG_MAX_UNIFORMS];
 		Matrix4 m_predefinedUniforms[PredefinedUniform::Count];
@@ -4123,7 +4189,7 @@ WGPU_IMPORT
 			rectPitch = (_rect.m_width / blockInfo.blockWidth) * blockInfo.blockSize;
 		}
 
-		const uint32_t bytesPerRow = UINT16_MAX == _pitch ? rectPitch : _pitch;
+		uint32_t bytesPerRow = UINT16_MAX == _pitch ? rectPitch : _pitch;
 		const uint32_t slicePitch  = rectPitch*_rect.m_height;
 
 		const bool convert = m_textureFormat != m_requestedFormat;
@@ -4133,10 +4199,10 @@ WGPU_IMPORT
 
 		if (convert)
 		{
+			bytesPerRow = rectPitch;
 			temp = (uint8_t*)bx::alloc(g_allocator, slicePitch);
-			bimg::imageDecodeToBgra8(g_allocator, temp, srcData, _rect.m_width, _rect.m_height, bytesPerRow, bimg::TextureFormat::Enum(m_requestedFormat) );
+			bimg::imageDecodeToBgra8(g_allocator, temp, srcData, _rect.m_width, _rect.m_height, rectPitch, bimg::TextureFormat::Enum(m_requestedFormat) );
 			srcData = temp;
-
 		}
 
 		const uint32_t width   = bx::min(bx::max(1u, bx::alignUp(m_width  >> _mip, blockInfo.blockWidth ) ), _rect.m_width);
@@ -4222,7 +4288,7 @@ WGPU_IMPORT
 		return sampler;
 	}
 
-	WGPUTextureView TextureWGPU::getTextureView(uint8_t _baseMipLevel, uint8_t _mipLevelCount, bool _storage, uint16_t _baseArrayLayer, uint16_t _arrayLayerCount) const
+	WGPUTextureView TextureWGPU::getTextureView(uint8_t _baseMipLevel, uint8_t _mipLevelCount, bool _storage, uint16_t _baseArrayLayer, uint16_t _arrayLayerCount, bool _force2DArray) const
 	{
 		bx::HashMurmur3 murmur;
 		murmur.begin();
@@ -4232,6 +4298,7 @@ WGPU_IMPORT
 		murmur.add(_storage);
 		murmur.add(_baseArrayLayer);
 		murmur.add(_arrayLayerCount);
+		murmur.add(_force2DArray);
 		const uint32_t hash = murmur.end();
 
 		WGPUTextureView textureView = s_renderWGPU->m_textureViewStateCache.find(hash);
@@ -4250,6 +4317,11 @@ WGPU_IMPORT
 				{
 					tvd = WGPUTextureViewDimension_2DArray;
 				}
+			}
+
+			if (_force2DArray)
+			{
+				tvd = WGPUTextureViewDimension_2DArray;
 			}
 
 			WGPUTextureViewDescriptor textureViewDesc =
@@ -4327,7 +4399,7 @@ WGPU_IMPORT
 	{
 		m_resolution = _resolution;
 
-		WGPUSurfaceCapabilities surfaceCaps;
+		WGPUSurfaceCapabilities surfaceCaps = WGPU_SURFACE_CAPABILITIES_INIT;
 		WGPUStatus status = WGPU_CHECK(wgpuSurfaceGetCapabilities(m_surface, s_renderWGPU->m_adapter, &surfaceCaps) );
 
 		if (WGPUStatus_Success != status)
@@ -4350,6 +4422,24 @@ m_resolution.formatColor = TextureFormat::BGRA8;
 				}
 			}
 		}
+
+#if BX_PLATFORM_EMSCRIPTEN
+		if (WGPUTextureFormat_Undefined != format
+		&&  surfaceCaps.formatCount > 0
+		&&  format != surfaceCaps.formats[0])
+		{
+			format = surfaceCaps.formats[0];
+
+			if (WGPUTextureFormat_BGRA8Unorm == format)
+			{
+				m_resolution.formatColor = TextureFormat::BGRA8;
+			}
+			else if (WGPUTextureFormat_RGBA8Unorm == format)
+			{
+				m_resolution.formatColor = TextureFormat::RGBA8;
+			}
+		}
+#endif // BX_PLATFORM_EMSCRIPTEN
 
 		BX_ASSERT(WGPUTextureFormat_Undefined != format, "SwapChain surface format is not available!");
 
@@ -4375,6 +4465,9 @@ m_resolution.formatColor = TextureFormat::BGRA8;
 		wgpuRelease(surfaceTexture.texture);
 
 		const uint32_t msaa = s_msaa[(_resolution.reset&BGFX_RESET_MSAA_MASK)>>BGFX_RESET_MSAA_SHIFT];
+
+		wgpuRelease(m_depthStencilView);
+		wgpuRelease(m_msaaTextureView);
 
 		if (bimg::isDepth(bimg::TextureFormat::Enum(m_resolution.formatDepthStencil) ) )
 		{
@@ -4461,6 +4554,7 @@ m_resolution.formatColor = TextureFormat::BGRA8;
 			};
 
 			m_msaaTextureView = WGPU_CHECK(wgpuTextureCreateView(texture, &textureViewDesc) );
+			wgpuRelease(texture);
 		}
 
 		return true;
@@ -4637,6 +4731,26 @@ m_resolution.formatColor = TextureFormat::BGRA8;
 			.nextInChain = &surfaceSource.chain,
 			.label = toWGPUStringView("SwapChainWGPU"),
 		};
+#elif BX_PLATFORM_EMSCRIPTEN
+		WGPUEmscriptenSurfaceSourceCanvasHTMLSelector surfaceSource =
+		{
+			.chain =
+			{
+				.next  = NULL,
+				.sType = WGPUSType_EmscriptenSurfaceSourceCanvasHTMLSelector,
+			},
+			.selector =
+			{
+				.data   = static_cast<const char*>(m_nwh),
+				.length = uint32_t(bx::strLen(static_cast<const char*>(m_nwh))),
+			},
+		};
+
+		surfaceDesc =
+		{
+			.nextInChain = &surfaceSource.chain,
+			.label = toWGPUStringView("SwapChainWGPU"),
+		};
 #else
 #	error "Figure out WGPU surface..."
 #endif // BX_PLATFORM_*
@@ -4649,7 +4763,9 @@ m_resolution.formatColor = TextureFormat::BGRA8;
 	void SwapChainWGPU::present()
 	{
 		wgpuRelease(m_textureView);
+#if !BX_PLATFORM_EMSCRIPTEN
 		WGPU_CHECK(wgpuSurfacePresent(m_surface) );
+#endif // !BX_PLATFORM_EMSCRIPTEN
 
 		WGPUSurfaceTexture surfaceTexture = WGPU_SURFACE_TEXTURE_INIT;
 		wgpuSurfaceGetCurrentTexture(m_surface, &surfaceTexture);
@@ -4877,17 +4993,23 @@ m_resolution.formatColor = TextureFormat::BGRA8;
 		wgpuRelease(m_commandEncoder);
 		++m_counter;
 
+	#if !BX_PLATFORM_EMSCRIPTEN
 		WGPU_CHECK(wgpuInstanceProcessEvents(s_renderWGPU->m_instance) );
+	#endif // !BX_PLATFORM_EMSCRIPTEN
 
 		m_commandEncoder = WGPU_CHECK(wgpuDeviceCreateCommandEncoder(s_renderWGPU->m_device, NULL) );
 	}
 
 	void CommandQueueWGPU::wait()
 	{
+	#if BX_PLATFORM_EMSCRIPTEN
+		wgpuInstanceProcessEvents(s_renderWGPU->m_instance);
+	#else
 		while (0 < m_counter)
 		{
 			WGPU_CHECK(wgpuInstanceProcessEvents(s_renderWGPU->m_instance) );
 		}
+	#endif // BX_PLATFORM_EMSCRIPTEN
 	}
 
 	void CommandQueueWGPU::frame()
@@ -5393,7 +5515,7 @@ m_resolution.formatColor = TextureFormat::BGRA8;
 				WGPUTextureView view;
 				if (ii < numMips)
 				{
-					view = _texture.getTextureView(uint8_t(topMip + 1 + ii), 1, true, true);
+					view = _texture.getTextureView(uint8_t(topMip + 1 + ii), 1, true, 0, UINT16_MAX, true);
 				}
 				else
 				{
@@ -5425,7 +5547,7 @@ m_resolution.formatColor = TextureFormat::BGRA8;
 						.offset      = 0,
 						.size        = 0,
 						.sampler     = NULL,
-						.textureView = _texture.getTextureView(uint8_t(topMip), 1, false, true),
+						.textureView = _texture.getTextureView(uint8_t(topMip), 1, false, 0, UINT16_MAX, true),
 					};
 
 					const uint32_t samplerFlags = 0
@@ -5536,8 +5658,6 @@ m_resolution.formatColor = TextureFormat::BGRA8;
 		currentState.m_stateFlags = BGFX_STATE_NONE;
 		currentState.m_stencil    = packStencil(BGFX_STENCIL_NONE, BGFX_STENCIL_NONE);
 
-		uint32_t currentNumVertices = 0;
-
 		static ViewState viewState;
 		viewState.reset(_render);
 
@@ -5579,6 +5699,41 @@ m_resolution.formatColor = TextureFormat::BGRA8;
 		WGPUComputePassEncoder computePassEncoder = NULL;
 
 		WGPUBindGroupLayout bindGroupLayout = NULL;
+		WGPURenderPipeline  currentPipeline = NULL;
+
+		struct PipelineState
+		{
+			Stream                stream[BGFX_CONFIG_MAX_VERTEX_STREAMS];
+			const RenderPipeline* pipeline;
+			uint64_t              state;
+			uint64_t              stencil;
+			uint32_t              msaaCount;
+			uint32_t              rgba;
+			uint32_t              streamMask;
+			uint32_t              bindIdx;
+			uint16_t              program;
+			uint16_t              fbh;
+			uint8_t               numInstanceData;
+			bool                  valid;
+			bool                  isIndex16;
+		};
+
+		PipelineState pipelineState;
+		bx::memSet(&pipelineState, 0, sizeof(pipelineState) );
+
+		struct BindState
+		{
+			const BindGroup* bindGroup;
+			WGPUBuffer       buffer;
+			uint32_t         bindIdx;
+			uint32_t         vsSize;
+			uint32_t         fsSize;
+			uint16_t         program;
+			bool             valid;
+		};
+
+		BindState bindState;
+		bx::memSet(&bindState, 0, sizeof(bindState) );
 
 		Profiler<TimerQueryWGPU> profiler(
 			  _render
@@ -5586,8 +5741,6 @@ m_resolution.formatColor = TextureFormat::BGRA8;
 			, s_viewName
 			, true
 			);
-
-		StateCacheLru<BindGroup, 64> bindGroupLru;
 
 		uint32_t msaaCount = 1;
 
@@ -5609,7 +5762,7 @@ m_resolution.formatColor = TextureFormat::BGRA8;
 
 				const uint32_t    itemIdx    = _render->m_sortValues[item];
 				const RenderItem& renderItem = _render->m_renderItem[itemIdx];
-				const RenderBind& renderBind = _render->m_renderItemBind[itemIdx];
+				const RenderBind& renderBind = _render->m_renderBind[isCompute ? renderItem.compute.m_bindIdx : renderItem.draw.m_bindIdx];
 				++item;
 
 				if (viewChanged)
@@ -5618,6 +5771,8 @@ m_resolution.formatColor = TextureFormat::BGRA8;
 					currentProgram = BGFX_INVALID_HANDLE;
 					currentState.clear();
 					hasPredefined = false;
+					pipelineState.valid = false;
+					bindState.valid     = false;
 
 					if (_render->m_view[view].m_fbh.idx != fbh.idx)
 					{
@@ -5812,6 +5967,7 @@ m_resolution.formatColor = TextureFormat::BGRA8;
 
 					WGPUCommandEncoder cmdEncoder = m_cmd.alloc();
 					renderPassEncoder = WGPU_CHECK(wgpuCommandEncoderBeginRenderPass(cmdEncoder, &renderPassDesc) );
+					currentPipeline   = NULL;
 
 					wgpuRenderPassEncoderSetViewport(
 						  renderPassEncoder
@@ -5905,12 +6061,13 @@ m_resolution.formatColor = TextureFormat::BGRA8;
 					murmur.add(vsSize);
 					const uint32_t bindHash = murmur.end();
 
-					const BindGroup* bindGroupCached = bindGroupLru.find(bindHash);
-					if (NULL == bindGroupCached)
+					BindGroupMap::iterator it = m_bindGroupMap.find(bindHash);
+					if (it == m_bindGroupMap.end() )
 					{
 						const BindGroup bindGroup = createBindGroup(bindGroupLayout, program, renderBind, sbo, true);
-						bindGroupCached = bindGroupLru.add(bindHash, bindGroup, 0);
+						it = m_bindGroupMap.insert(stl::make_pair(bindHash, bindGroup) ).first;
 					}
+					const BindGroup* bindGroupCached = &it->second;
 
 					WGPU_CHECK(wgpuComputePassEncoderSetBindGroup(computePassEncoder, 0, bindGroupCached->bindGroup, bindGroupCached->numOffsets, sbo.offsets) );
 
@@ -5950,6 +6107,7 @@ m_resolution.formatColor = TextureFormat::BGRA8;
 				}
 
 				const RenderDraw& draw = renderItem.draw;
+				const uint32_t bindIdx = draw.m_bindIdx;
 
 				const bool hasOcclusionQuery = 0 != (draw.m_stateFlags & BGFX_STATE_INTERNAL_OCCLUSION_QUERY);
 				{
@@ -5976,25 +6134,66 @@ m_resolution.formatColor = TextureFormat::BGRA8;
 				bool constantsChanged = draw.m_uniformBegin < draw.m_uniformEnd;
 				rendererUpdateUniforms(this, _render->m_uniformBuffer[draw.m_uniformIdx], draw.m_uniformBegin, draw.m_uniformEnd);
 
-				currentNumVertices = draw.m_numVertices;
-
 				const uint64_t state = draw.m_stateFlags;
 
-				const RenderPipeline& renderPipeline = *getPipeline(
-					  key.m_program
-					, fbh
-					, msaaCount
-					, draw.m_stateFlags
-					, draw.m_rgba
-					, draw.m_stencil
-					, draw.m_streamMask
-					, draw.m_stream
-					, uint8_t(draw.m_instanceDataStride/16)
-					, draw.isIndex16()
-					, renderBind
-					);
+				const uint8_t numInstanceData = uint8_t(draw.m_instanceDataStride/16);
+				const bool    drawIsIndex16   = draw.isIndex16();
+
+				const RenderPipeline* renderPipelinePtr;
+				if (pipelineState.valid
+				&&  pipelineState.program         == key.m_program.idx
+				&&  pipelineState.fbh             == fbh.idx
+				&&  pipelineState.msaaCount       == msaaCount
+				&&  pipelineState.state           == draw.m_stateFlags
+				&&  pipelineState.rgba            == draw.m_rgba
+				&&  pipelineState.stencil         == draw.m_stencil
+				&&  pipelineState.streamMask      == draw.m_streamMask
+				&&  pipelineState.numInstanceData == numInstanceData
+				&&  pipelineState.isIndex16       == drawIsIndex16
+				&&  pipelineState.bindIdx         == bindIdx
+				&&  0 == bx::memCmp(pipelineState.stream, draw.m_stream, sizeof(pipelineState.stream) ) )
+				{
+					renderPipelinePtr = pipelineState.pipeline;
+				}
+				else
+				{
+					renderPipelinePtr = getPipeline(
+						  key.m_program
+						, fbh
+						, msaaCount
+						, draw.m_stateFlags
+						, draw.m_rgba
+						, draw.m_stencil
+						, draw.m_streamMask
+						, draw.m_stream
+						, numInstanceData
+						, drawIsIndex16
+						, renderBind
+						);
+
+					pipelineState.valid           = true;
+					pipelineState.program         = key.m_program.idx;
+					pipelineState.fbh             = fbh.idx;
+					pipelineState.msaaCount       = msaaCount;
+					pipelineState.state           = draw.m_stateFlags;
+					pipelineState.rgba            = draw.m_rgba;
+					pipelineState.stencil         = draw.m_stencil;
+					pipelineState.streamMask      = draw.m_streamMask;
+					pipelineState.numInstanceData = numInstanceData;
+					pipelineState.isIndex16       = drawIsIndex16;
+					pipelineState.bindIdx         = bindIdx;
+					bx::memCopy(pipelineState.stream, draw.m_stream, sizeof(pipelineState.stream) );
+					pipelineState.pipeline        = renderPipelinePtr;
+				}
+
+				const RenderPipeline& renderPipeline = *renderPipelinePtr;
 				bindGroupLayout = renderPipeline.bindGroupLayout;
-				WGPU_CHECK(wgpuRenderPassEncoderSetPipeline(renderPassEncoder, renderPipeline.pipeline) );
+
+				if (currentPipeline != renderPipeline.pipeline)
+				{
+					currentPipeline = renderPipeline.pipeline;
+					WGPU_CHECK(wgpuRenderPassEncoderSetPipeline(renderPassEncoder, renderPipeline.pipeline) );
+				}
 
 				const ProgramWGPU& program = m_program[key.m_program.idx];
 
@@ -6035,19 +6234,50 @@ m_resolution.formatColor = TextureFormat::BGRA8;
 				const uint32_t fsSize = NULL != program.m_fsh ? program.m_fsh->m_size : 0;
 				m_uniformScratchBuffer.write(sbo, m_vsScratch, vsSize, m_fsScratch, fsSize);
 
-				bx::HashMurmur3 murmur;
-				murmur.begin(0x44524157);
-				murmur.add(renderBind.m_bind, sizeof(renderBind.m_bind) );
-				murmur.add(sbo.buffer);
-				murmur.add(vsSize);
-				murmur.add(fsSize);
-				const uint32_t bindHash = murmur.end();
-
-				const BindGroup* bindGroupCached = bindGroupLru.find(bindHash);
-				if (NULL == bindGroupCached)
+				const BindGroup* bindGroupCached;
+				if (bindState.valid
+				&&  bindState.program == key.m_program.idx
+				&&  bindState.bindIdx == bindIdx
+				&&  bindState.buffer  == sbo.buffer
+				&&  bindState.vsSize  == vsSize
+				&&  bindState.fsSize  == fsSize)
 				{
-					const BindGroup bind = createBindGroup(bindGroupLayout, program, renderBind, sbo, false);
-					bindGroupCached = bindGroupLru.add(bindHash, bind, 0);
+					bindGroupCached = bindState.bindGroup;
+				}
+				else
+				{
+					bx::HashMurmur3 murmur;
+					murmur.begin(0x44524157);
+
+					for (uint32_t stage = 0; stage < BGFX_CONFIG_MAX_TEXTURE_SAMPLERS; ++stage)
+					{
+						if (isValid(program.m_shaderBinding[stage].uniformHandle) )
+						{
+							murmur.add(&renderBind.m_bind[stage], sizeof(renderBind.m_bind[stage]) );
+						}
+					}
+
+					murmur.add(sbo.buffer);
+					murmur.add(vsSize);
+					murmur.add(fsSize);
+					const uint32_t bindHash = murmur.end();
+
+					BindGroupMap::iterator bindIt = m_bindGroupMap.find(bindHash);
+					if (bindIt == m_bindGroupMap.end() )
+					{
+						const BindGroup bind = createBindGroup(bindGroupLayout, program, renderBind, sbo, false);
+						bindIt = m_bindGroupMap.insert(stl::make_pair(bindHash, bind) ).first;
+					}
+
+					bindGroupCached = &bindIt->second;
+
+					bindState.valid     = true;
+					bindState.program   = key.m_program.idx;
+					bindState.bindIdx   = bindIdx;
+					bindState.buffer    = sbo.buffer;
+					bindState.vsSize    = vsSize;
+					bindState.fsSize    = fsSize;
+					bindState.bindGroup = bindGroupCached;
 				}
 
 				WGPU_CHECK(wgpuRenderPassEncoderSetBindGroup(renderPassEncoder, 0, bindGroupCached->bindGroup, bindGroupCached->numOffsets, sbo.offsets) );
@@ -6217,7 +6447,20 @@ m_resolution.formatColor = TextureFormat::BGRA8;
 
 				if (0 != currentState.m_streamMask)
 				{
-					uint32_t numVertices       = currentNumVertices;
+					uint32_t numVertices = draw.m_numVertices;
+
+					if (UINT32_MAX == numVertices)
+					{
+						for (BitMaskToIndexIteratorT it(currentState.m_streamMask); !it.isDone(); it.next() )
+						{
+							const uint8_t idx = it.idx;
+							const VertexBufferWGPU& vb = m_vertexBuffers[currentState.m_stream[idx].m_handle.idx];
+							const uint16_t decl = isValid(draw.m_stream[idx].m_layoutHandle) ? draw.m_stream[idx].m_layoutHandle.idx : vb.m_layoutHandle.idx;
+							const VertexLayout& layout = m_vertexLayouts[decl];
+							numVertices = bx::min(numVertices, vb.m_size/layout.m_stride);
+						}
+					}
+
 					uint32_t numIndices        = 0;
 					uint32_t numPrimsSubmitted = 0;
 					uint32_t numInstances      = 0;
@@ -6469,10 +6712,11 @@ m_resolution.formatColor = TextureFormat::BGRA8;
 					);
 
 				double elapsedCpuMs = double(frameTime)*toMs;
-				tvm.printf(10, pos++, 0x8b, "   Submitted: %5d (draw %5d, compute %4d) / CPU %7.4f [ms] %c GPU %7.4f [ms] (latency %d) "
+				tvm.printf(10, pos++, 0x8b, "   Submitted: %5d (draw %5d, compute %4d) / Binds: %4d / CPU %7.4f [ms] %c GPU %7.4f [ms] (latency %d) "
 					, _render->m_numRenderItems
 					, statsKeyType[0]
 					, statsKeyType[1]
+					, _render->m_numRenderBinds
 					, elapsedCpuMs
 					, elapsedCpuMs > maxGpuElapsed ? '>' : '<'
 					, maxGpuElapsed

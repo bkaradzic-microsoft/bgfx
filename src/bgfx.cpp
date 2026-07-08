@@ -27,6 +27,7 @@
 BX_ERROR_RESULT(BGFX_ERROR_TEXTURE_VALIDATION,      BX_MAKEFOURCC('b', 'g', 0, 1) );
 BX_ERROR_RESULT(BGFX_ERROR_FRAME_BUFFER_VALIDATION, BX_MAKEFOURCC('b', 'g', 0, 2) );
 BX_ERROR_RESULT(BGFX_ERROR_IDENTIFIER_VALIDATION,   BX_MAKEFOURCC('b', 'g', 0, 3) );
+BX_ERROR_RESULT(BGFX_ERROR_VIDEO_CODEC_VALIDATION,  BX_MAKEFOURCC('b', 'g', 0, 4) );
 
 namespace bgfx
 {
@@ -579,10 +580,17 @@ namespace bgfx
 #include "fs_clear5.bin.h"
 #include "fs_clear6.bin.h"
 #include "fs_clear7.bin.h"
-#include "cs_mipgen_pow2.bin.h"
-#include "cs_mipgen_oddx.bin.h"
-#include "cs_mipgen_oddy.bin.h"
-#include "cs_mipgen_oddxy.bin.h"
+
+#if BGFX_CONFIG_MIP_GEN_FALLBACK
+#	include "cs_mipgen_pow2.bin.h"
+#	include "cs_mipgen_oddx.bin.h"
+#	include "cs_mipgen_oddy.bin.h"
+#	include "cs_mipgen_oddxy.bin.h"
+#endif // BGFX_CONFIG_MIP_GEN_FALLBACK
+
+#if BGFX_CONFIG_VIDEO
+#	include "cs_yuv_to_rgb.bin.h"
+#endif // BGFX_CONFIG_VIDEO
 
 	static const EmbeddedShader s_embeddedShaders[] =
 	{
@@ -597,10 +605,17 @@ namespace bgfx
 		BGFX_EMBEDDED_SHADER(fs_clear5),
 		BGFX_EMBEDDED_SHADER(fs_clear6),
 		BGFX_EMBEDDED_SHADER(fs_clear7),
+
+#if BGFX_CONFIG_MIP_GEN_FALLBACK
 		BGFX_EMBEDDED_SHADER(cs_mipgen_pow2),
 		BGFX_EMBEDDED_SHADER(cs_mipgen_oddx),
 		BGFX_EMBEDDED_SHADER(cs_mipgen_oddy),
 		BGFX_EMBEDDED_SHADER(cs_mipgen_oddxy),
+#endif // BGFX_CONFIG_MIP_GEN_FALLBACK
+
+#if BGFX_CONFIG_VIDEO
+		BGFX_EMBEDDED_SHADER(cs_yuv_to_rgb),
+#endif // BGFX_CONFIG_VIDEO
 
 		BGFX_EMBEDDED_SHADER_END()
 	};
@@ -1057,6 +1072,7 @@ namespace bgfx
 		}
 	}
 
+#if BGFX_CONFIG_MIP_GEN_FALLBACK
 	void MipGen::init()
 	{
 		BGFX_CHECK_API_THREAD();
@@ -1118,6 +1134,83 @@ namespace bgfx
 			s_texMipSrc = BGFX_INVALID_HANDLE;
 		}
 	}
+#else
+	void MipGen::init()
+	{
+	}
+
+	void MipGen::shutdown()
+	{
+	}
+#endif // BGFX_CONFIG_MIP_GEN_FALLBACK
+
+#if BGFX_CONFIG_VIDEO
+	VideoDecode* g_videoDecode = NULL;
+
+	void VideoDecode::init()
+	{
+		BGFX_CHECK_API_THREAD();
+
+		switch (g_caps.rendererType)
+		{
+		case RendererType::Metal:
+		case RendererType::Direct3D11:
+		case RendererType::Direct3D12:
+		case RendererType::Vulkan:
+			break;
+
+		default:
+			return;
+		}
+
+		ShaderHandle csh = createEmbeddedShader(s_embeddedShaders, g_caps.rendererType, "cs_yuv_to_rgb");
+		BX_ASSERT(isValid(csh), "Failed to create video decode embedded compute shader.");
+
+		if (isValid(csh) )
+		{
+			m_program = createProgram(csh, true);
+			BX_ASSERT(isValid(m_program), "Failed to create video decode program.");
+		}
+
+		s_texY      = createUniform("bgfx_texY",      bgfx::UniformType::Sampler);
+		s_texCbCr   = createUniform("bgfx_texCbCr",   bgfx::UniformType::Sampler);
+
+		g_videoDecode = this;
+	}
+
+	void VideoDecode::shutdown()
+	{
+		BGFX_CHECK_API_THREAD();
+
+		g_videoDecode = NULL;
+
+		if (isValid(m_program) )
+		{
+			destroy(m_program);
+			m_program = BGFX_INVALID_HANDLE;
+		}
+
+		if (isValid(s_texY) )
+		{
+			destroy(s_texY);
+			s_texY = BGFX_INVALID_HANDLE;
+		}
+
+		if (isValid(s_texCbCr) )
+		{
+			destroy(s_texCbCr);
+			s_texCbCr = BGFX_INVALID_HANDLE;
+		}
+	}
+#else
+	void VideoDecode::init()
+	{
+	}
+
+	void VideoDecode::shutdown()
+	{
+	}
+#endif // BGFX_CONFIG_VIDEO
 
 	const char* s_uniformTypeName[] =
 	{
@@ -1164,6 +1257,7 @@ namespace bgfx
 		"u_invModelView",
 		"u_modelViewProj",
 		"u_alphaRef4",
+		"bgfx_indirectArgBase",
 	};
 
 	const char* getPredefinedUniformName(PredefinedUniform::Enum _enum)
@@ -1435,8 +1529,8 @@ namespace bgfx
 			return;
 		}
 
-		const uint32_t renderItemIdx = bx::atomicFetchAndAddsat<uint32_t>(&m_frame->m_numRenderItems, 1, BGFX_CONFIG_MAX_DRAW_CALLS);
-		if (BGFX_CONFIG_MAX_DRAW_CALLS <= renderItemIdx)
+		const uint32_t renderItemIdx = bx::atomicFetchAndAddsat<uint32_t>(&m_frame->m_numRenderItems, 1, m_frame->m_maxDrawCalls);
+		if (m_frame->m_maxDrawCalls <= renderItemIdx)
 		{
 			discard(_flags);
 			++m_numDropped;
@@ -1494,11 +1588,11 @@ namespace bgfx
 			m_draw.m_occlusionQuery = _occlusionQuery;
 		}
 
+		m_draw.m_bindIdx = bindStateIndexCached();
 		m_frame->m_renderItem[renderItemIdx].draw = m_draw;
-		m_frame->m_renderItemBind[renderItemIdx]  = m_bind;
 
 		m_draw.clear(_flags);
-		m_bind.clear(_flags);
+		clearBind(_flags);
 		if (_flags & BGFX_DISCARD_STATE)
 		{
 			m_uniformBegin = m_uniformEnd;
@@ -1518,8 +1612,8 @@ namespace bgfx
 			return;
 		}
 
-		const uint32_t renderItemIdx = bx::atomicFetchAndAddsat<uint32_t>(&m_frame->m_numRenderItems, 1, BGFX_CONFIG_MAX_DRAW_CALLS);
-		if (BGFX_CONFIG_MAX_DRAW_CALLS-1 <= renderItemIdx)
+		const uint32_t renderItemIdx = bx::atomicFetchAndAddsat<uint32_t>(&m_frame->m_numRenderItems, 1, m_frame->m_maxDrawCalls);
+		if (m_frame->m_maxDrawCalls <= renderItemIdx)
 		{
 			discard(_flags);
 			++m_numDropped;
@@ -1533,6 +1627,7 @@ namespace bgfx
 
 		m_compute.m_startMatrix = m_draw.m_startMatrix;
 		m_compute.m_numMatrices = m_draw.m_numMatrices;
+		m_compute.m_startIndex  = m_draw.m_startIndex;
 		m_compute.m_numX   = bx::max(_numX, 1u);
 		m_compute.m_numY   = bx::max(_numY, 1u);
 		m_compute.m_numZ   = bx::max(_numZ, 1u);
@@ -1549,11 +1644,11 @@ namespace bgfx
 		m_compute.m_uniformIdx   = m_uniformIdx;
 		m_compute.m_uniformBegin = m_uniformBegin;
 		m_compute.m_uniformEnd   = m_uniformEnd;
+		m_compute.m_bindIdx = bindStateIndexCached();
 		m_frame->m_renderItem[renderItemIdx].compute = m_compute;
-		m_frame->m_renderItemBind[renderItemIdx]     = m_bind;
 
 		m_compute.clear(_flags);
-		m_bind.clear(_flags);
+		clearBind(_flags);
 		m_uniformBegin = m_uniformEnd;
 	}
 
@@ -1634,6 +1729,13 @@ namespace bgfx
 			m_sortKeys[ii] = SortKey::remapView(m_sortKeys[ii], viewRemap);
 		}
 
+		s_ctx->reserveTemp(bx::max(
+			  m_numRenderItems
+			, m_numRenderBinds
+			, m_numBlitItems
+			, m_uniformCacheFrame.m_numItems
+			) );
+
 		bx::radixSort(m_sortKeys, s_ctx->m_tempKeys, m_sortValues, s_ctx->m_tempValues, m_numRenderItems);
 
 		for (uint32_t ii = 0, num = m_numBlitItems; ii < num; ++ii)
@@ -1641,9 +1743,69 @@ namespace bgfx
 			m_blitKeys[ii] = BlitKey::remapView(m_blitKeys[ii], viewRemap);
 		}
 
-		bx::radixSort(m_blitKeys, (uint32_t*)&s_ctx->m_tempKeys, m_numBlitItems);
+		bx::radixSort(m_blitKeys, (uint32_t*)s_ctx->m_tempKeys, m_numBlitItems);
 
 		m_uniformCacheFrame.sort(viewRemap, s_ctx->m_tempKeys);
+
+		dedupBind();
+	}
+
+	void Frame::dedupBind()
+	{
+		if (!m_needBindDedup)
+		{
+			return;
+		}
+
+		BGFX_PROFILER_SCOPE("bgfx/DedupBind", kColorSubmit);
+
+		Context::BindHashMap& bindHashMap = s_ctx->m_renderBindHashMap;
+		bindHashMap.clear();
+
+		RenderItemCount* remap = s_ctx->m_tempValues;
+
+		uint32_t numUnique = 0;
+		for (uint32_t ii = 0, num = m_numRenderBinds; ii < num; ++ii)
+		{
+			const RenderBind& renderBind = m_renderBind[ii];
+			const uint32_t hash = bx::hash<bx::HashMurmur3>(renderBind.m_bind, sizeof(renderBind.m_bind) );
+
+			Context::BindHashMap::const_iterator it = bindHashMap.find(hash);
+
+			if (it != bindHashMap.end()
+			&&   0 == bx::memCmp(renderBind.m_bind, m_renderBind[it->second].m_bind, sizeof(renderBind.m_bind) ) )
+			{
+				remap[ii] = RenderItemCount(it->second);
+			}
+			else
+			{
+				if (numUnique != ii)
+				{
+					m_renderBind[numUnique] = renderBind;
+				}
+
+				bindHashMap.insert(stl::make_pair(hash, numUnique) );
+				remap[ii] = RenderItemCount(numUnique);
+				++numUnique;
+			}
+		}
+
+		m_numRenderBinds = numUnique;
+
+		for (uint32_t ii = 0, num = m_numRenderItems; ii < num; ++ii)
+		{
+			const bool  isCompute = 0 == (m_sortKeys[ii] & kSortKeyDrawBit);
+			RenderItem& item      = m_renderItem[m_sortValues[ii] ];
+
+			if (isCompute)
+			{
+				item.compute.m_bindIdx = remap[item.compute.m_bindIdx];
+			}
+			else
+			{
+				item.draw.m_bindIdx = remap[item.draw.m_bindIdx];
+			}
+		}
 	}
 
 	RenderFrame::Enum renderFrame(int32_t _msecs)
@@ -1758,6 +1920,7 @@ namespace bgfx
 		CAPS_FLAGS(BGFX_CAPS_VERTEX_ATTRIB_HALF),
 		CAPS_FLAGS(BGFX_CAPS_VERTEX_ATTRIB_UINT10),
 		CAPS_FLAGS(BGFX_CAPS_VERTEX_ID),
+		CAPS_FLAGS(BGFX_CAPS_VIDEO_DECODE),
 		CAPS_FLAGS(BGFX_CAPS_VIEWPORT_LAYER_ARRAY),
 #undef CAPS_FLAGS
 	};
@@ -1929,6 +2092,37 @@ namespace bgfx
 					);
 				BX_UNUSED(flags);
 			}
+		}
+
+		BX_TRACE("");
+		BX_TRACE("Supported video decode codecs:");
+		BX_TRACE("\t +----- 8-bit sample depth");
+		BX_TRACE("\t |+---- 10-bit sample depth");
+		BX_TRACE("\t ||+--- 12-bit sample depth");
+		BX_TRACE("\t |||+-- 4:2:0 chroma subsampling");
+		BX_TRACE("\t ||||+- 4:2:2 chroma subsampling");
+		BX_TRACE("\t |||||+ 4:4:4 chroma subsampling");
+		BX_TRACE("\t ||||||  +-- name");
+		static const char* s_videoCodecName[] =
+		{
+			"H264",
+			"H265",
+			"AV1",
+		};
+		static_assert(BX_COUNTOF(s_videoCodecName) == VideoCodec::Count);
+		for (uint32_t ii = 0; ii < VideoCodec::Count; ++ii)
+		{
+			uint32_t flags = g_caps.codecs[ii];
+			BX_TRACE("\t[%c%c%c%c%c%c] %s"
+				, flags & BGFX_CAPS_VIDEO_CODEC_BIT_8      ? '8' : ' '
+				, flags & BGFX_CAPS_VIDEO_CODEC_BIT_10     ? 'a' : ' '
+				, flags & BGFX_CAPS_VIDEO_CODEC_BIT_12     ? 'c' : ' '
+				, flags & BGFX_CAPS_VIDEO_CODEC_CHROMA_420 ? '0' : ' '
+				, flags & BGFX_CAPS_VIDEO_CODEC_CHROMA_422 ? '2' : ' '
+				, flags & BGFX_CAPS_VIDEO_CODEC_CHROMA_444 ? '4' : ' '
+				, s_videoCodecName[ii]
+				);
+			BX_UNUSED(flags);
 		}
 
 		BX_TRACE("");
@@ -2141,10 +2335,10 @@ namespace bgfx
 		m_frameTimeLast = bx::getHPCounter();
 		m_flipAfterRender = !!(m_init.resolution.reset & BGFX_RESET_FLIP_AFTER_RENDER);
 
-		m_submit->create(_init.limits.minResourceCbSize);
+		m_submit->create(_init.limits.minResourceCbSize, _init.limits.numDrawCalls, _init.limits.numDrawCallPeakFrames);
 
 #if BGFX_CONFIG_MULTITHREADED
-		m_render->create(_init.limits.minResourceCbSize);
+		m_render->create(_init.limits.minResourceCbSize, _init.limits.numDrawCalls, _init.limits.numDrawCallPeakFrames);
 
 		if (s_renderFrameCalled)
 		{
@@ -2258,6 +2452,7 @@ namespace bgfx
 		m_textVideoMemBlitter.init(m_init.resolution.debugTextScale);
 		m_clearQuad.init();
 		m_mipGen.init();
+		m_videoDecode.init();
 
 		m_submit->m_transientVb = createTransientVertexBuffer(_init.limits.maxTransientVbSize);
 		m_submit->m_transientIb = createTransientIndexBuffer(_init.limits.maxTransientIbSize);
@@ -2285,6 +2480,7 @@ namespace bgfx
 		m_textVideoMemBlitter.shutdown();
 		m_clearQuad.shutdown();
 		m_mipGen.shutdown();
+		m_videoDecode.shutdown();
 		frame();
 
 		if (BX_ENABLED(BGFX_CONFIG_MULTITHREADED) )
@@ -2324,13 +2520,26 @@ namespace bgfx
 #if BGFX_CONFIG_MULTITHREADED
 		// Render thread shutdown sequence.
 		renderSemWait(); // Wait for previous frame.
-		apiSemPost();   // OK to set context to NULL.
+		apiSemPost();    // OK to set context to NULL.
 		// s_ctx is NULL here.
 		renderSemWait(); // In RenderFrame::Exiting state.
 
 		if (m_thread.isRunning() )
 		{
 			m_thread.shutdown();
+
+			// Internal render thread was created it owns the latch, clear it as the thread exits.
+			s_renderFrameCalled = false;
+		}
+		else if (m_singleThreaded)
+		{
+			// bgfx::renderFrame() was latched on API thread.
+			s_renderFrameCalled = false;
+		}
+		else
+		{
+			// Otherwise bgfx::renderFrame() was called manually, and latched on different thread.
+			// So we don't control it...
 		}
 
 		m_render->destroy();
@@ -2683,7 +2892,7 @@ namespace bgfx
 
 		if (!m_flipAfterRender)
 		{
-			if (!m_render->m_flush)
+			if (!m_flushPrevFrame)
 			{
 				BGFX_PROFILER_SCOPE("bgfx/flip", kColorSubmit);
 				flip();
@@ -2730,6 +2939,8 @@ namespace bgfx
 					flip();
 				}
 			}
+
+			m_flushPrevFrame = m_render->m_flush;
 		}
 		else
 		{
@@ -2859,7 +3070,7 @@ namespace bgfx
 	};
 
 	BX_PRAGMA_DIAGNOSTIC_PUSH();
-	BX_PRAGMA_DIAGNOSTIC_IGNORED_CLANG_GCC("-Wtautological-constant-compare");
+	BX_PRAGMA_DIAGNOSTIC_IGNORED_CLANG("-Wtautological-constant-compare");
 	static RendererCreator s_rendererCreator[] =
 	{
 		{ noop::rendererCreate,   noop::rendererDestroy,   BGFX_RENDERER_NOOP_NAME,       true                              }, // Noop
@@ -3772,6 +3983,8 @@ namespace bgfx
 
 	Init::Limits::Limits()
 		: maxEncoders(BGFX_CONFIG_DEFAULT_MAX_ENCODERS)
+		, numDrawCalls(BGFX_CONFIG_MAX_DRAW_CALLS)
+		, numDrawCallPeakFrames(0)
 		, minResourceCbSize(BGFX_CONFIG_MIN_RESOURCE_COMMAND_BUFFER_SIZE)
 		, maxTransientVbSize(BGFX_CONFIG_MAX_TRANSIENT_VERTEX_BUFFER_SIZE)
 		, maxTransientIbSize(BGFX_CONFIG_MAX_TRANSIENT_INDEX_BUFFER_SIZE)
@@ -3787,6 +4000,7 @@ namespace bgfx
 		, debug(BX_ENABLED(BGFX_CONFIG_DEBUG) )
 		, profile(BX_ENABLED(BGFX_CONFIG_DEBUG_ANNOTATION) )
 		, fallback(true)
+		, videoDecode(false)
 		, callback(NULL)
 		, allocator(NULL)
 	{
@@ -3813,6 +4027,7 @@ namespace bgfx
 		Init init = _userInit;
 
 		init.limits.maxEncoders       = bx::clamp<uint16_t>(init.limits.maxEncoders, 1, (0 != BGFX_CONFIG_MULTITHREADED) ? 128 : 1);
+		init.limits.numDrawCalls      = alignDrawCalls(bx::max(init.limits.numDrawCalls, kDrawCallBlock) );
 		init.limits.minResourceCbSize = bx::min<uint32_t>(init.limits.minResourceCbSize, BGFX_CONFIG_MIN_RESOURCE_COMMAND_BUFFER_SIZE);
 
 		struct ErrorState
@@ -3848,7 +4063,10 @@ namespace bgfx
 		}
 
 		bx::memSet(&g_caps, 0, sizeof(g_caps) );
-		g_caps.limits.maxDrawCalls            = BGFX_CONFIG_MAX_DRAW_CALLS;
+		g_caps.limits.maxDrawCalls = 0 == init.limits.numDrawCallPeakFrames
+			? init.limits.numDrawCalls
+			: BGFX_CONFIG_MAX_DRAW_CALLS
+			;
 		g_caps.limits.maxBlits                = BGFX_CONFIG_MAX_BLIT_ITEMS;
 		g_caps.limits.maxTextureSize          = 0;
 		g_caps.limits.maxTextureLayers        = 1;
@@ -3958,10 +4176,9 @@ namespace bgfx
 			s_allocatorStub = NULL;
 		}
 
-		s_threadIndex       = 0;
-		s_renderFrameCalled = false;
-		g_callback          = NULL;
-		g_allocator         = NULL;
+		s_threadIndex = 0;
+		g_callback    = NULL;
+		g_allocator   = NULL;
 	}
 
 	void reset(uint32_t _width, uint32_t _height, uint32_t _flags, TextureFormat::Enum _format)
@@ -4899,6 +5116,16 @@ namespace bgfx
 					, ii
 					, tr.m_flags
 					);
+
+				BGFX_ERROR_CHECK(
+					0 == (at.resolve & BGFX_RESOLVE_AUTO_GEN_MIPS)
+					, _err
+					, BGFX_ERROR_FRAME_BUFFER_VALIDATION
+					, "Frame buffer depth attachment cannot use `BGFX_RESOLVE_AUTO_GEN_MIPS`. Depth textures do not support MSAA resolve."
+					, "Attachment %d, resolve flags 0x%02x."
+					, ii
+					, at.resolve
+					);
 			}
 			else
 			{
@@ -5138,6 +5365,121 @@ namespace bgfx
 		return err.isOk();
 	}
 
+	static void isVideoCodecValid(VideoCodec::Enum _codec, uint8_t _chroma, uint8_t _bitDepth, uint16_t _codedWidth, uint16_t _codedHeight, uint8_t _maxDpbSlots, uint8_t _maxActiveReferences, bx::Error* _err)
+	{
+		BX_ERROR_SCOPE(_err, "Video codec validation");
+
+		BGFX_ERROR_CHECK(false
+			|| 0 != (g_caps.supported & BGFX_CAPS_VIDEO_DECODE)
+			, _err
+			, BGFX_ERROR_VIDEO_CODEC_VALIDATION
+			, "Hardware video decode is not supported! "
+			  "Use bgfx::getCaps to check `BGFX_CAPS_VIDEO_DECODE` backend renderer capabilities. "
+			  "Init::videoDecode must be enabled at bgfx::init()."
+			, ""
+			);
+
+		BGFX_ERROR_CHECK(false
+			|| _codec < VideoCodec::Count
+			, _err
+			, BGFX_ERROR_VIDEO_CODEC_VALIDATION
+			, "Invalid video codec."
+			, "Video codec: %d (Max: %d)."
+			, _codec
+			, VideoCodec::Count - 1
+			);
+
+		const uint32_t codecCaps = g_caps.codecs[_codec];
+
+		uint32_t depthBit = 0;
+		switch (_bitDepth)
+		{
+			case  8: depthBit = BGFX_CAPS_VIDEO_CODEC_BIT_8;  break;
+			case 10: depthBit = BGFX_CAPS_VIDEO_CODEC_BIT_10; break;
+			case 12: depthBit = BGFX_CAPS_VIDEO_CODEC_BIT_12; break;
+			default: break;
+		}
+
+		BGFX_ERROR_CHECK(false
+			|| 0 != depthBit
+			, _err
+			, BGFX_ERROR_VIDEO_CODEC_VALIDATION
+			, "Unsupported video bit depth (must be 8, 10 or 12)."
+			, "Bit depth: %d."
+			, _bitDepth
+			);
+
+		BGFX_ERROR_CHECK(false
+			|| 0 != (codecCaps & depthBit)
+			, _err
+			, BGFX_ERROR_VIDEO_CODEC_VALIDATION
+			, "Video codec does not support requested bit depth on this device."
+			, "Codec: %d, bit depth: %d."
+			, _codec
+			, _bitDepth
+			);
+
+		uint32_t chromaBit = 0;
+		switch (_chroma)
+		{
+			case 0: chromaBit = BGFX_CAPS_VIDEO_CODEC_CHROMA_420; break;
+			case 2: chromaBit = BGFX_CAPS_VIDEO_CODEC_CHROMA_422; break;
+			case 4: chromaBit = BGFX_CAPS_VIDEO_CODEC_CHROMA_444; break;
+			default: break;
+		}
+
+		BGFX_ERROR_CHECK(false
+			|| 0 != chromaBit
+			, _err
+			, BGFX_ERROR_VIDEO_CODEC_VALIDATION
+			, "Invalid chroma subsampling value (must be 0 = 4:2:0, 2 = 4:2:2, 4 = 4:4:4)."
+			, "Chroma: %d."
+			, _chroma
+			);
+
+		BGFX_ERROR_CHECK(false
+			|| 0 != (codecCaps & chromaBit)
+			, _err
+			, BGFX_ERROR_VIDEO_CODEC_VALIDATION
+			, "Video codec does not support requested chroma subsampling on this device."
+			, "Codec: %d, chroma: %d."
+			, _codec
+			, _chroma
+			);
+
+		BGFX_ERROR_CHECK(false
+			|| (0 != _codedWidth
+			&&  0 != _codedHeight
+			&&  _codedWidth  <= g_caps.limits.maxTextureSize
+			&&  _codedHeight <= g_caps.limits.maxTextureSize)
+			, _err
+			, BGFX_ERROR_VIDEO_CODEC_VALIDATION
+			, "Coded picture dimensions are invalid or above the `maxTextureSize` limit."
+			, "Coded width x height requested %d x %d (Max: %d)."
+			, _codedWidth
+			, _codedHeight
+			, g_caps.limits.maxTextureSize
+			);
+
+		BGFX_ERROR_CHECK(false
+			|| (0 != _maxDpbSlots
+			&&  _maxActiveReferences <= _maxDpbSlots)
+			, _err
+			, BGFX_ERROR_VIDEO_CODEC_VALIDATION
+			, "Invalid DPB layout: maxDpbSlots must be > 0 and maxActiveReferences must be <= maxDpbSlots."
+			, "maxDpbSlots: %d, maxActiveReferences: %d."
+			, _maxDpbSlots
+			, _maxActiveReferences
+			);
+	}
+
+	bool isVideoCodecValid(VideoCodec::Enum _codec, uint8_t _chroma, uint8_t _bitDepth, uint16_t _codedWidth, uint16_t _codedHeight, uint8_t _maxDpbSlots, uint8_t _maxActiveReferences)
+	{
+		bx::Error err;
+		isVideoCodecValid(_codec, _chroma, _bitDepth, _codedWidth, _codedHeight, _maxDpbSlots, _maxActiveReferences, &err);
+		return err.isOk();
+	}
+
 	void isIdentifierValid(const bx::StringView& _name, bx::Error* _err)
 	{
 		BX_ERROR_SCOPE(_err, "Uniform identifier validation");
@@ -5236,7 +5578,22 @@ namespace bgfx
 		}
 
 		bx::ErrorAssert err;
-		isTextureValid(_width, _height, 0, false, _numLayers, _format, _flags, &err);
+
+		uint64_t flags = _flags;
+		if (NULL != _mem
+		&&  _mem->size >= sizeof(VideoDecoderInit) )
+		{
+			VideoDecoderInit init;
+			bx::memCopy(&init, _mem->data, sizeof(init) );
+
+			if (kVideoDecoderInitMagic == init.magic
+			&&  init.codec < VideoCodec::Count)
+			{
+				flags |= BGFX_TEXTURE_INTERNAL_VIDEO_DECODE_DST;
+			}
+		}
+
+		isTextureValid(_width, _height, 0, false, _numLayers, _format, flags, &err);
 
 		if (!err.isOk() )
 		{
@@ -5247,7 +5604,8 @@ namespace bgfx
 		_numLayers = bx::max<uint16_t>(_numLayers, 1);
 
 		if (BX_ENABLED(BGFX_CONFIG_DEBUG)
-		&&  NULL != _mem)
+		&&  NULL != _mem
+		&&  0 == (flags & BGFX_TEXTURE_INTERNAL_VIDEO_DECODE_DST) )
 		{
 			TextureInfo ti;
 			calcTextureSize(ti, _width, _height, 1, false, _hasMips, _numLayers, _format);
@@ -5275,7 +5633,11 @@ namespace bgfx
 		tc.m_mem       = _mem;
 		bx::write(&writer, tc, bx::ErrorAssert{});
 
-		return s_ctx->createTexture(mem, _flags, 0, NULL, _ratio, NULL != _mem, _external);
+		const bool immutable = true
+			&& NULL != _mem
+			&& 0 == (flags & BGFX_TEXTURE_INTERNAL_VIDEO_DECODE_DST)
+			;
+		return s_ctx->createTexture(mem, flags, 0, NULL, _ratio, immutable, _external);
 	}
 
 	TextureHandle createTexture2D(uint16_t _width, uint16_t _height, bool _hasMips, uint16_t _numLayers, TextureFormat::Enum _format, uint64_t _flags, const Memory* _mem, uint64_t _external)
@@ -5485,11 +5847,24 @@ namespace bgfx
 	FrameBufferHandle createFrameBuffer(uint8_t _num, const TextureHandle* _handles, bool _destroyTextures)
 	{
 		Attachment attachment[BGFX_CONFIG_MAX_FRAME_BUFFER_ATTACHMENTS];
+
 		for (uint8_t ii = 0; ii < _num; ++ii)
 		{
 			Attachment& at = attachment[ii];
-			at.init(_handles[ii], Access::Write, 0, 1, 0, BGFX_RESOLVE_AUTO_GEN_MIPS);
+			const TextureRef& ref = s_ctx->m_textureRef[_handles[ii].idx];
+
+			at.init(
+				  _handles[ii]
+				, Access::Write
+				, 0
+				, 1
+				, 0
+				, !ref.hasMips() || ref.isDepth()
+					? BGFX_RESOLVE_NONE
+					: BGFX_RESOLVE_AUTO_GEN_MIPS
+				);
 		}
+
 		return createFrameBuffer(_num, attachment, _destroyTextures);
 	}
 
