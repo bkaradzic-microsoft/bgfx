@@ -24,7 +24,9 @@
 #	define WGPU_CHECK(_call) _call
 #endif // BGFX_CONFIG_DEBUG
 
-#define WGPU_SKIP_DECLARATIONS
+#if !BX_PLATFORM_EMSCRIPTEN
+#	define WGPU_SKIP_DECLARATIONS
+#endif // !BX_PLATFORM_EMSCRIPTEN
 #include <dawn/include/webgpu/webgpu.h>
 
 #if USE_WEBGPU_DYNAMIC_LIB
@@ -222,8 +224,8 @@
 		WGPU_IMPORT_FUNC(false, RenderPassEncoderEndOcclusionQuery);                \
 		WGPU_IGNORE_____(false, RenderPassEncoderExecuteBundles);                   \
 		WGPU_IMPORT_FUNC(false, RenderPassEncoderInsertDebugMarker);                \
-		WGPU_IMPORT_FUNC(false, RenderPassEncoderMultiDrawIndexedIndirect);         \
-		WGPU_IMPORT_FUNC(false, RenderPassEncoderMultiDrawIndirect);                \
+		WGPU_IGNORE_____(false, RenderPassEncoderMultiDrawIndexedIndirect);         \
+		WGPU_IGNORE_____(false, RenderPassEncoderMultiDrawIndirect);                \
 		WGPU_IGNORE_____(false, RenderPassEncoderPixelLocalStorageBarrier);         \
 		WGPU_IMPORT_FUNC(false, RenderPassEncoderPopDebugGroup);                    \
 		WGPU_IMPORT_FUNC(false, RenderPassEncoderPushDebugGroup);                   \
@@ -307,11 +309,11 @@
 		WGPU_IGNORE_____(false, TextureGetDepthOrArrayLayers);                      \
 		WGPU_IGNORE_____(false, TextureGetDimension);                               \
 		WGPU_IGNORE_____(false, TextureGetFormat);                                  \
-		WGPU_IGNORE_____(false, TextureGetHeight);                                  \
+		WGPU_IMPORT_FUNC(false, TextureGetHeight);                                  \
 		WGPU_IGNORE_____(false, TextureGetMipLevelCount);                           \
 		WGPU_IGNORE_____(false, TextureGetSampleCount);                             \
 		WGPU_IGNORE_____(false, TextureGetUsage);                                   \
-		WGPU_IGNORE_____(false, TextureGetWidth);                                   \
+		WGPU_IMPORT_FUNC(false, TextureGetWidth);                                   \
 		WGPU_IGNORE_____(false, TexturePin);                                        \
 		WGPU_IMPORT_FUNC(false, TextureSetLabel);                                   \
 		WGPU_IGNORE_____(false, TextureUnpin);                                      \
@@ -638,7 +640,7 @@ namespace wgpu {
 		void update(uint8_t _side, uint8_t _mip, const Rect& _rect, uint16_t _z, uint16_t _depth, uint16_t _pitch, const Memory* _mem);
 
 		WGPUSampler getSamplerState(uint32_t _samplerFlags) const;
-		WGPUTextureView getTextureView(uint8_t _baseMipLevel, uint8_t _mipLevelCount, bool _storage, uint16_t _baseArrayLayer = 0, uint16_t _arrayLayerCount = UINT16_MAX) const;
+		WGPUTextureView getTextureView(uint8_t _baseMipLevel, uint8_t _mipLevelCount, bool _storage, uint16_t _baseArrayLayer = 0, uint16_t _arrayLayerCount = UINT16_MAX, bool _force2DArray = false) const;
 
 		WGPUTexture m_texture;
 		WGPUTexture m_textureResolve;
