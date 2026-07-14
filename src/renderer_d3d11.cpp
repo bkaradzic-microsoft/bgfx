@@ -3944,6 +3944,7 @@ namespace bgfx { namespace d3d11
 		const bool needUav = 0 != (_flags & (BGFX_BUFFER_COMPUTE_WRITE|BGFX_BUFFER_DRAW_INDIRECT) );
 		const bool needSrv = 0 != (_flags & BGFX_BUFFER_COMPUTE_READ);
 		const bool drawIndirect = 0 != (_flags & BGFX_BUFFER_DRAW_INDIRECT);
+		const bool raw = 0 != (_flags & BGFX_BUFFER_COMPUTE_RAW);
 		m_dynamic = NULL == _data && !needUav;
 
 		D3D11_BUFFER_DESC desc;
@@ -3955,6 +3956,7 @@ namespace bgfx { namespace d3d11
 			;
 		desc.MiscFlags = 0
 			| (drawIndirect ? D3D11_RESOURCE_MISC_DRAWINDIRECT_ARGS : 0)
+			| (raw ? D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS : 0)
 			;
 		desc.StructureByteStride = 0;
 
@@ -4009,7 +4011,7 @@ namespace bgfx { namespace d3d11
 		{
 			desc.Usage = D3D11_USAGE_DEFAULT;
 			desc.CPUAccessFlags = 0;
-			desc.StructureByteStride = _stride;
+			desc.StructureByteStride = raw ? 0 : _stride;
 
 			DX_CHECK(device->CreateBuffer(&desc
 				, NULL == _data ? NULL : &srd
@@ -4017,11 +4019,11 @@ namespace bgfx { namespace d3d11
 				) );
 
 			D3D11_UNORDERED_ACCESS_VIEW_DESC uavd;
-			uavd.Format = format;
+			uavd.Format = raw ? DXGI_FORMAT_R32_TYPELESS : format;
 			uavd.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
 			uavd.Buffer.FirstElement = 0;
-			uavd.Buffer.NumElements = m_size / stride;
-			uavd.Buffer.Flags = 0;
+			uavd.Buffer.NumElements = raw ? (m_size / 4) : (m_size / stride);
+			uavd.Buffer.Flags = raw ? D3D11_BUFFER_UAV_FLAG_RAW : 0;
 			DX_CHECK(device->CreateUnorderedAccessView(m_ptr
 				, &uavd
 				, &m_uav
@@ -4070,10 +4072,21 @@ namespace bgfx { namespace d3d11
 		if (needSrv)
 		{
 			D3D11_SHADER_RESOURCE_VIEW_DESC srvd;
-			srvd.Format = format;
-			srvd.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
-			srvd.Buffer.FirstElement = 0;
-			srvd.Buffer.NumElements = m_size / stride;
+			if (raw)
+			{
+				srvd.Format = DXGI_FORMAT_R32_TYPELESS;
+				srvd.ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX;
+				srvd.BufferEx.FirstElement = 0;
+				srvd.BufferEx.NumElements = m_size / 4;
+				srvd.BufferEx.Flags = D3D11_BUFFEREX_SRV_FLAG_RAW;
+			}
+			else
+			{
+				srvd.Format = format;
+				srvd.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
+				srvd.Buffer.FirstElement = 0;
+				srvd.Buffer.NumElements = m_size / stride;
+			}
 			DX_CHECK(device->CreateShaderResourceView(m_ptr
 				, &srvd
 				, &m_srv
