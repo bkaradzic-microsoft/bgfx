@@ -352,9 +352,15 @@ namespace bgfx { namespace d3d11
 		void set();
 		HRESULT present(uint32_t _syncInterval, uint32_t _flags);
 
-		ID3D11RenderTargetView*    m_rtv[BGFX_CONFIG_MAX_FRAME_BUFFER_ATTACHMENTS-1];
-		ID3D11UnorderedAccessView* m_uav[BGFX_CONFIG_MAX_FRAME_BUFFER_ATTACHMENTS-1];
-		ID3D11ShaderResourceView*  m_srv[BGFX_CONFIG_MAX_FRAME_BUFFER_ATTACHMENTS-1];
+		// Sized to hold a full set of color attachments. bgfx advertises
+		// maxFBAttachments = min(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT,
+		// BGFX_CONFIG_MAX_FRAME_BUFFER_ATTACHMENTS), which can be all color
+		// (no depth). Using MAX-1 here under-sizes the arrays and overflows
+		// when a framebuffer uses every attachment as a color target (e.g.
+		// 8-slice layered 3D voxelization MRT).
+		ID3D11RenderTargetView*    m_rtv[BGFX_CONFIG_MAX_FRAME_BUFFER_ATTACHMENTS];
+		ID3D11UnorderedAccessView* m_uav[BGFX_CONFIG_MAX_FRAME_BUFFER_ATTACHMENTS];
+		ID3D11ShaderResourceView*  m_srv[BGFX_CONFIG_MAX_FRAME_BUFFER_ATTACHMENTS];
 		ID3D11DepthStencilView*    m_dsv;
 		Dxgi::SwapChainI* m_swapChain;
 		void* m_nwh;
