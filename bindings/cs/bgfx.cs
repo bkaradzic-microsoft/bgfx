@@ -280,9 +280,16 @@ public static partial class bgfx
 		FuncRefMask            = 0x000000ff,
 		FuncRmaskShift         = 8,
 		FuncRmaskMask          = 0x0000ff00,
-		None                   = 0x00000000,
+	
+		/// <summary>
+		/// No stencil test.
+		/// </summary>
+		None                   = 0x0000ff00,
+	
+		/// <summary>
+		/// Stencil front or back mask.
+		/// </summary>
 		Mask                   = 0xffffffff,
-		Default                = 0x00000000,
 	
 		/// <summary>
 		/// Enable stencil test, less.
@@ -1685,6 +1692,46 @@ public static partial class bgfx
 		/// </summary>
 		TexCoord7,
 	
+		/// <summary>
+		/// a_texcoord8
+		/// </summary>
+		TexCoord8,
+	
+		/// <summary>
+		/// a_texcoord9
+		/// </summary>
+		TexCoord9,
+	
+		/// <summary>
+		/// a_texcoord10
+		/// </summary>
+		TexCoord10,
+	
+		/// <summary>
+		/// a_texcoord11
+		/// </summary>
+		TexCoord11,
+	
+		/// <summary>
+		/// a_texcoord12
+		/// </summary>
+		TexCoord12,
+	
+		/// <summary>
+		/// a_texcoord13
+		/// </summary>
+		TexCoord13,
+	
+		/// <summary>
+		/// a_texcoord14
+		/// </summary>
+		TexCoord14,
+	
+		/// <summary>
+		/// a_texcoord15
+		/// </summary>
+		TexCoord15,
+	
 		Count
 	}
 	
@@ -1724,6 +1771,16 @@ public static partial class bgfx
 		/// Float
 		/// </summary>
 		Float,
+	
+		/// <summary>
+		/// Int32
+		/// </summary>
+		Int32,
+	
+		/// <summary>
+		/// Uint32
+		/// </summary>
+		Uint32,
 	
 		Count
 	}
@@ -2565,6 +2622,8 @@ public static partial class bgfx
 			public uint maxComputeBindings;
 			public uint maxVertexLayouts;
 			public uint maxVertexStreams;
+			public uint maxVertexAttributes;
+			public uint maxInstanceData;
 			public uint maxIndexBuffers;
 			public uint maxVertexBuffers;
 			public uint maxDynamicIndexBuffers;
@@ -2811,8 +2870,8 @@ public static partial class bgfx
 	{
 		public uint hash;
 		public ushort stride;
-		public fixed ushort offset[18];
-		public fixed ushort attributes[18];
+		public fixed ushort offset[26];
+		public fixed ushort attributes[26];
 	}
 	
 	public unsafe struct Encoder
@@ -3796,6 +3855,20 @@ public static partial class bgfx
 	///
 	[DllImport(DllName, EntryPoint="bgfx_update_texture_cube", CallingConvention = CallingConvention.Cdecl)]
 	public static extern unsafe void update_texture_cube(TextureHandle _handle, ushort _layer, byte _side, byte _mip, ushort _x, ushort _y, ushort _width, ushort _height, Memory* _mem, ushort _pitch);
+	
+	/// <summary>
+	/// Clear a texture subresource range to zero.
+	/// 
+	/// </summary>
+	///
+	/// <param name="_handle">Texture handle.</param>
+	/// <param name="_mip">First mip level.</param>
+	/// <param name="_numMips">Number of mip levels.</param>
+	/// <param name="_layer">First array layer (or 3D depth slice base).</param>
+	/// <param name="_numLayers">Number of layers.</param>
+	///
+	[DllImport(DllName, EntryPoint="bgfx_clear_texture", CallingConvention = CallingConvention.Cdecl)]
+	public static extern unsafe void clear_texture(TextureHandle _handle, byte _mip, byte _numMips, ushort _layer, ushort _numLayers);
 	
 	/// <summary>
 	/// Read back texture content.
@@ -4823,6 +4896,22 @@ public static partial class bgfx
 	public static extern unsafe void encoder_set_image(Encoder* _this, byte _stage, TextureHandle _handle, byte _mip, Access _access, TextureFormat _format);
 	
 	/// <summary>
+	/// Set compute image stage for draw primitive, selecting a sub-range of the
+	/// texture's array layers and mip levels.
+	/// </summary>
+	///
+	/// <param name="_stage">Compute stage.</param>
+	/// <param name="_handle">Texture handle.</param>
+	/// <param name="_firstLayer">First array layer.</param>
+	/// <param name="_numLayers">Number of array layers.</param>
+	/// <param name="_mip">Mip level.</param>
+	/// <param name="_access">Image access. See `Access::Enum`.</param>
+	/// <param name="_format">Texture format. See: `TextureFormat::Enum`.</param>
+	///
+	[DllImport(DllName, EntryPoint="bgfx_encoder_set_image_view", CallingConvention = CallingConvention.Cdecl)]
+	public static extern unsafe void encoder_set_image_view(Encoder* _this, byte _stage, TextureHandle _handle, ushort _firstLayer, ushort _numLayers, byte _mip, Access _access, TextureFormat _format);
+	
+	/// <summary>
 	/// Dispatch compute.
 	/// </summary>
 	///
@@ -5482,6 +5571,22 @@ public static partial class bgfx
 	///
 	[DllImport(DllName, EntryPoint="bgfx_set_image", CallingConvention = CallingConvention.Cdecl)]
 	public static extern unsafe void set_image(byte _stage, TextureHandle _handle, byte _mip, Access _access, TextureFormat _format);
+	
+	/// <summary>
+	/// Set compute image stage for draw primitive, selecting a sub-range of the
+	/// texture's array layers and mip levels.
+	/// </summary>
+	///
+	/// <param name="_stage">Compute stage.</param>
+	/// <param name="_handle">Texture handle.</param>
+	/// <param name="_firstLayer">First array layer.</param>
+	/// <param name="_numLayers">Number of array layers.</param>
+	/// <param name="_mip">Mip level.</param>
+	/// <param name="_access">Image access. See `Access::Enum`.</param>
+	/// <param name="_format">Texture format. See: `TextureFormat::Enum`.</param>
+	///
+	[DllImport(DllName, EntryPoint="bgfx_set_image_view", CallingConvention = CallingConvention.Cdecl)]
+	public static extern unsafe void set_image_view(byte _stage, TextureHandle _handle, ushort _firstLayer, ushort _numLayers, byte _mip, Access _access, TextureFormat _format);
 	
 	/// <summary>
 	/// Dispatch compute.

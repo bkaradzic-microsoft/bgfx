@@ -61,6 +61,14 @@ namespace bgfx { namespace gl
 		"a_texcoord5",
 		"a_texcoord6",
 		"a_texcoord7",
+		"a_texcoord8",
+		"a_texcoord9",
+		"a_texcoord10",
+		"a_texcoord11",
+		"a_texcoord12",
+		"a_texcoord13",
+		"a_texcoord14",
+		"a_texcoord15",
 	};
 	static_assert(Attrib::Count == BX_COUNTOF(s_attribName) );
 
@@ -71,6 +79,17 @@ namespace bgfx { namespace gl
 		"i_data2",
 		"i_data3",
 		"i_data4",
+		"i_data5",
+		"i_data6",
+		"i_data7",
+		"i_data8",
+		"i_data9",
+		"i_data10",
+		"i_data11",
+		"i_data12",
+		"i_data13",
+		"i_data14",
+		"i_data15",
 	};
 	static_assert(BGFX_CONFIG_MAX_INSTANCE_DATA_COUNT == BX_COUNTOF(s_instanceDataName) );
 
@@ -91,6 +110,8 @@ namespace bgfx { namespace gl
 		GL_UNSIGNED_SHORT,           // Uint16
 		GL_HALF_FLOAT,               // Half
 		GL_FLOAT,                    // Float
+		GL_INT,                      // Int32
+		GL_UNSIGNED_INT,             // Uint32
 	};
 	static_assert(AttribType::Count == BX_COUNTOF(s_attribType) );
 
@@ -2930,6 +2951,8 @@ namespace bgfx { namespace gl
 					: 0
 					;
 
+				g_caps.supported |= BGFX_CAPS_TEXTURE_EXTERNAL;
+
 				g_caps.supported |= false
 					|| s_extension[Extension::EXT_texture_array].m_supported
 					|| s_extension[Extension::EXT_gpu_shader4].m_supported
@@ -2963,6 +2986,8 @@ namespace bgfx { namespace gl
 				g_caps.limits.maxTextureLayers   = BX_ENABLED(BGFX_CONFIG_RENDERER_OPENGL >= 30) || BX_ENABLED(BGFX_CONFIG_RENDERER_OPENGLES >= 30) || s_extension[Extension::EXT_texture_array].m_supported ? uint16_t(bx::max(glGet(GL_MAX_ARRAY_TEXTURE_LAYERS), 1) ) : 1;
 				g_caps.limits.maxComputeBindings = computeSupport ? BGFX_MAX_COMPUTE_BINDINGS : 0;
 				g_caps.limits.maxVertexStreams   = BGFX_CONFIG_MAX_VERTEX_STREAMS;
+				g_caps.limits.maxVertexAttributes = uint32_t(glGet(GL_MAX_VERTEX_ATTRIBS) );
+				g_caps.limits.maxInstanceData    = bx::min<uint32_t>(g_caps.limits.maxInstanceData, g_caps.limits.maxVertexAttributes);
 
 				if (BX_ENABLED(BGFX_CONFIG_RENDERER_OPENGL)
 				||  m_gles3
@@ -3429,14 +3454,18 @@ namespace bgfx { namespace gl
 
 		void* createTexture(TextureHandle _handle, const Memory* _mem, uint64_t _flags, uint8_t _skip, uint64_t _external) override
 		{
-			BX_UNUSED(_external);
-			m_textures[_handle.idx].create(_mem, _flags, _skip);
+			m_textures[_handle.idx].create(_mem, _flags, _skip, _external);
 			return NULL;
 		}
 
 		void updateTexture(TextureHandle _handle, uint8_t _side, uint8_t _mip, const Rect& _rect, uint16_t _z, uint16_t _depth, uint16_t _pitch, const Memory* _mem) override
 		{
 			m_textures[_handle.idx].update(_side, _mip, _rect, _z, _depth, _pitch, _mem);
+		}
+
+		void clearTexture(TextureHandle _handle, uint8_t _mip, uint8_t _numMips, uint16_t _layer, uint16_t _numLayers) override
+		{
+			m_textures[_handle.idx].clear(_mip, _numMips, _layer, _numLayers);
 		}
 
 		void readTexture(TextureHandle _handle, void* _data, uint16_t _layer, uint8_t _mip) override
@@ -3633,6 +3662,11 @@ namespace bgfx { namespace gl
 
 		void destroyFrameBuffer(FrameBufferHandle _handle) override
 		{
+			if (m_fbh.idx == _handle.idx)
+			{
+				m_fbh = BGFX_INVALID_HANDLE;
+			}
+
 			uint16_t denseIdx = m_frameBuffers[_handle.idx].destroy();
 			if (UINT16_MAX != denseIdx)
 			{
@@ -4670,6 +4704,7 @@ namespace bgfx { namespace gl
 				{
 					flags |= GL_STENCIL_BUFFER_BIT;
 					GL_CHECK(glClearStencil(_clear.m_stencil) );
+					GL_CHECK(glStencilMask(0xff) );
 				}
 
 				if (0 != flags)
@@ -4708,6 +4743,7 @@ namespace bgfx { namespace gl
 				if (BGFX_CLEAR_STENCIL & _clear.m_flags)
 				{
 					GL_CHECK(glEnable(GL_STENCIL_TEST) );
+					GL_CHECK(glStencilMask(0xff) );
 					GL_CHECK(glStencilFuncSeparate(GL_FRONT_AND_BACK, GL_ALWAYS, _clear.m_stencil,  0xff) );
 					GL_CHECK(glStencilOpSeparate(GL_FRONT_AND_BACK, GL_REPLACE, GL_REPLACE, GL_REPLACE) );
 				}
@@ -5653,7 +5689,7 @@ namespace bgfx { namespace gl
 		GL_CHECK(glDeleteBuffers(1, &m_id) );
 	}
 
-	bool TextureGL::init(GLenum _target, uint32_t _width, uint32_t _height, uint32_t _depth, uint8_t _numMips, uint64_t _flags)
+	bool TextureGL::init(GLenum _target, uint32_t _width, uint32_t _height, uint32_t _depth, uint8_t _numMips, uint64_t _flags, uint64_t _external)
 	{
 		m_target  = _target;
 		m_numMips = _numMips;
@@ -5671,6 +5707,18 @@ namespace bgfx { namespace gl
 			|| _target == GL_TEXTURE_2D_ARRAY
 			|| _target == GL_TEXTURE_CUBE_MAP_ARRAY
 			;
+
+		if (0 != _external)
+		{
+			m_id     = (GLuint)_external;
+			m_flags |= BGFX_SAMPLER_INTERNAL_SHARED;
+
+			const TextureFormatInfo& tfi = s_textureFormat[m_textureFormat];
+			m_fmt  = srgb ? tfi.m_fmtSrgb : tfi.m_fmt;
+			m_type = tfi.m_type;
+
+			return true;
+		}
 
 		if (!writeOnly
 		|| (renderTarget && textureArray) )
@@ -5810,7 +5858,38 @@ namespace bgfx { namespace gl
 		return true;
 	}
 
-	void TextureGL::create(const Memory* _mem, uint64_t _flags, uint8_t _skip)
+	void TextureGL::clear(uint8_t _mip, uint8_t _numMips, uint16_t _layer, uint16_t _numLayers)
+	{
+		if (NULL == glClearTexSubImage)
+		{
+			return;
+		}
+
+		const bool     is3D     = GL_TEXTURE_3D == m_target;
+		const uint32_t numSides = m_numLayers * (isCubeMap() ? 6 : 1);
+
+		const uint8_t mipBeg = bx::min<uint8_t>(_mip, m_numMips);
+		const uint8_t mipEnd = (UINT8_MAX == _numMips)
+			? m_numMips
+			: bx::min<uint8_t>(m_numMips, uint8_t(_mip + _numMips) )
+			;
+
+		for (uint8_t lod = mipBeg; lod < mipEnd; ++lod)
+		{
+			const GLsizei mipW = GLsizei(bx::max<uint32_t>(1, m_width  >> lod) );
+			const GLsizei mipH = GLsizei(bx::max<uint32_t>(1, m_height >> lod) );
+
+			const GLint   zoffset = is3D ? 0 : GLint(_layer);
+			const GLsizei depth   = is3D
+				? GLsizei(bx::max<uint32_t>(1, m_depth >> lod) )
+				: GLsizei( (UINT16_MAX == _numLayers) ? numSides - _layer : _numLayers)
+				;
+
+			GL_CHECK(glClearTexSubImage(m_id, lod, 0, 0, zoffset, mipW, mipH, depth, m_fmt, m_type, NULL) );
+		}
+	}
+
+	void TextureGL::create(const Memory* _mem, uint64_t _flags, uint8_t _skip, uint64_t _external)
 	{
 		bimg::ImageContainer imageContainer;
 
@@ -5868,12 +5947,18 @@ namespace bgfx { namespace gl
 				, textureArray ? ti.numLayers : ti.depth
 				, ti.numMips
 				, _flags
+				, _external
 				) )
 			{
 				return;
 			}
 
 			m_numLayers = ti.numLayers;
+
+			if (0 != _external)
+			{
+				return;
+			}
 
 			target = isCubeMap()
 				? GL_TEXTURE_CUBE_MAP_POSITIVE_X
@@ -7905,8 +7990,8 @@ namespace bgfx { namespace gl
 										GL_CHECK(glBindImageTexture(ii
 											, texture.m_id
 											, bind.m_firstMip
-											, texture.isCubeMap() || texture.m_target == GL_TEXTURE_2D_ARRAY ? GL_TRUE : GL_FALSE
-											, 0
+											, texture.isCubeMap() || texture.m_target == GL_TEXTURE_2D_ARRAY || UINT16_MAX != bind.m_numLayers ? GL_TRUE : GL_FALSE
+											, bind.m_firstLayer
 											, s_access[bind.m_access]
 											, s_imageFormat[bind.m_format])
 											);
@@ -8078,32 +8163,31 @@ namespace bgfx { namespace gl
 
 				if (0 != changedStencil)
 				{
-					if (0 != newStencil)
+					if (stencilEnabled(newStencil) )
 					{
 						GL_CHECK(glEnable(GL_STENCIL_TEST) );
 
-						uint32_t bstencil = unpackStencil(1, newStencil);
-						uint8_t frontAndBack = bstencil != BGFX_STENCIL_NONE && bstencil != unpackStencil(0, newStencil);
+						const uint32_t frmaskChanged = unpackStencil(0, changedStencil) & BGFX_STENCIL_FUNC_RMASK_MASK;
+						const GLint    readMask      = (unpackStencil(0, newStencil)&BGFX_STENCIL_FUNC_RMASK_MASK)>>BGFX_STENCIL_FUNC_RMASK_SHIFT;
 
-// 						uint32_t bchanged = unpackStencil(1, changedStencil);
-// 						if (BGFX_STENCIL_FUNC_RMASK_MASK & bchanged)
-// 						{
-// 							uint32_t wmask = (bstencil&BGFX_STENCIL_FUNC_RMASK_MASK)>>BGFX_STENCIL_FUNC_RMASK_SHIFT;
-// 							GL_CHECK(glStencilMask(wmask) );
-// 						}
+						uint8_t frontAndBack = stencilFrontAndBack(newStencil);
+
+						if (0 != (changedStencil & (uint64_t(BGFX_STENCIL_FUNC_RMASK_MASK)<<32) ) )
+						{
+							GL_CHECK(glStencilMask(unpackStencilWriteMask(newStencil) ) );
+						}
 
 						for (uint8_t ii = 0, num = frontAndBack+1; ii < num; ++ii)
 						{
-							uint32_t stencil = unpackStencil(ii, newStencil);
-							uint32_t changed = unpackStencil(ii, changedStencil);
-							GLenum face = s_stencilFace[frontAndBack+ii];
+							uint32_t stencil =  unpackStencil(ii, newStencil);
+							uint32_t changed = (unpackStencil(ii, changedStencil) & ~BGFX_STENCIL_FUNC_RMASK_MASK) | frmaskChanged;
+							GLenum      face = s_stencilFace[frontAndBack+ii];
 
 							if ( (BGFX_STENCIL_TEST_MASK|BGFX_STENCIL_FUNC_REF_MASK|BGFX_STENCIL_FUNC_RMASK_MASK) & changed)
 							{
-								GLint ref = (stencil&BGFX_STENCIL_FUNC_REF_MASK)>>BGFX_STENCIL_FUNC_REF_SHIFT;
-								GLint mask = (stencil&BGFX_STENCIL_FUNC_RMASK_MASK)>>BGFX_STENCIL_FUNC_RMASK_SHIFT;
-								uint32_t func = (stencil&BGFX_STENCIL_TEST_MASK)>>BGFX_STENCIL_TEST_SHIFT;
-								GL_CHECK(glStencilFuncSeparate(face, s_cmpFunc[func], ref, mask) );
+								GLint    ref  = (stencil&BGFX_STENCIL_FUNC_REF_MASK)>>BGFX_STENCIL_FUNC_REF_SHIFT;
+								uint32_t func = (stencil&BGFX_STENCIL_TEST_MASK    )>>BGFX_STENCIL_TEST_SHIFT;
+								GL_CHECK(glStencilFuncSeparate(face, s_cmpFunc[func], ref, readMask) );
 							}
 
 							if ( (BGFX_STENCIL_OP_FAIL_S_MASK|BGFX_STENCIL_OP_FAIL_Z_MASK|BGFX_STENCIL_OP_PASS_Z_MASK) & changed)
@@ -8420,8 +8504,8 @@ namespace bgfx { namespace gl
 											GL_CHECK(glBindImageTexture(stage
 												, texture.m_id
 												, bind.m_firstMip
-												, texture.isCubeMap() || texture.m_target == GL_TEXTURE_2D_ARRAY ? GL_TRUE : GL_FALSE
-												, 0
+												, texture.isCubeMap() || texture.m_target == GL_TEXTURE_2D_ARRAY || UINT16_MAX != bind.m_numLayers ? GL_TRUE : GL_FALSE
+												, bind.m_firstLayer
 												, s_access[bind.m_access]
 												, s_imageFormat[bind.m_format])
 												);

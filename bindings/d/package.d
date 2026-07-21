@@ -9,7 +9,7 @@ import bindbc.common.types: c_int64, c_uint64, va_list;
 import bindbc.bgfx.config;
 static import bgfx.impl;
 
-enum uint apiVersion = 147;
+enum uint apiVersion = 151;
 
 alias ViewID = ushort;
 
@@ -171,9 +171,8 @@ StencilFuncRMask_ toStencilFuncRMask(uint v) nothrow @nogc pure @safe{ return (v
 
 alias Stencil_ = uint;
 enum Stencil: Stencil_{
-	none     = 0x0000_0000,
-	mask     = 0xFFFF_FFFF,
-	default_ = 0x0000_0000,
+	none  = 0x0000_FF00, ///No stencil test.
+	mask  = 0xFFFF_FFFF, ///Stencil front or back mask.
 }
 
 alias StencilTest_ = uint;
@@ -710,6 +709,14 @@ enum Attrib: bgfx.impl.Attrib.Enum{
 	texCoord5 = bgfx.impl.Attrib.Enum.texCoord5,
 	texCoord6 = bgfx.impl.Attrib.Enum.texCoord6,
 	texCoord7 = bgfx.impl.Attrib.Enum.texCoord7,
+	texCoord8 = bgfx.impl.Attrib.Enum.texCoord8,
+	texCoord9 = bgfx.impl.Attrib.Enum.texCoord9,
+	texCoord10 = bgfx.impl.Attrib.Enum.texCoord10,
+	texCoord11 = bgfx.impl.Attrib.Enum.texCoord11,
+	texCoord12 = bgfx.impl.Attrib.Enum.texCoord12,
+	texCoord13 = bgfx.impl.Attrib.Enum.texCoord13,
+	texCoord14 = bgfx.impl.Attrib.Enum.texCoord14,
+	texCoord15 = bgfx.impl.Attrib.Enum.texCoord15,
 	count = bgfx.impl.Attrib.Enum.count,
 }
 
@@ -722,6 +729,8 @@ enum AttribType: bgfx.impl.AttribType.Enum{
 	uint16 = bgfx.impl.AttribType.Enum.uint16,
 	half = bgfx.impl.AttribType.Enum.half,
 	float_ = bgfx.impl.AttribType.Enum.float_,
+	int32 = bgfx.impl.AttribType.Enum.int32,
+	uint32 = bgfx.impl.AttribType.Enum.uint32,
 	count = bgfx.impl.AttribType.Enum.count,
 }
 
@@ -1133,6 +1142,8 @@ extern(C++, "bgfx") struct Caps{
 		uint maxComputeBindings; ///Maximum number of compute bindings.
 		uint maxVertexLayouts; ///Maximum number of vertex format layouts.
 		uint maxVertexStreams; ///Maximum number of vertex streams.
+		uint maxVertexAttributes; ///Maximum number of vertex attributes.
+		uint maxInstanceData; ///Maximum number of instance data slots.
 		uint maxIndexBuffers; ///Maximum number of index buffer handles.
 		uint maxVertexBuffers; ///Maximum number of vertex buffer handles.
 		uint maxDynamicIndexBuffers; ///Maximum number of dynamic index buffer handles.
@@ -2097,6 +2108,20 @@ extern(C++, "bgfx") struct Encoder{
 			{q{void}, q{setImage}, q{ubyte stage, TextureHandle handle, ubyte mip, bgfx.impl.Access.Enum access, bgfx.impl.TextureFormat.Enum format=TextureFormat.count}, ext: `C++`},
 			
 			/**
+			Set compute image stage for draw primitive, selecting a sub-range of the
+			texture's array layers and mip levels.
+			Params:
+				stage = Compute stage.
+				handle = Texture handle.
+				firstLayer = First array layer.
+				numLayers = Number of array layers.
+				mip = Mip level.
+				access = Image access. See `Access::Enum`.
+				format = Texture format. See: `TextureFormat::Enum`.
+			*/
+			{q{void}, q{setImage}, q{ubyte stage, TextureHandle handle, ushort firstLayer, ushort numLayers, ubyte mip, bgfx.impl.Access.Enum access, bgfx.impl.TextureFormat.Enum format=TextureFormat.count}, ext: `C++`},
+			
+			/**
 			Dispatch compute.
 			Params:
 				id = View id.
@@ -3012,6 +3037,18 @@ mixin(joinFnBinds((){
 		UINT16_MAX, it will be calculated internally based on _width.
 		*/
 		{q{void}, q{updateTextureCube}, q{TextureHandle handle, ushort layer, ubyte side, ubyte mip, ushort x, ushort y, ushort width, ushort height, const(Memory)* mem, ushort pitch=ushort.max}, ext: `C++, "bgfx"`},
+		
+		/**
+		* Clear a texture subresource range to zero.
+		* 
+		Params:
+			handle = Texture handle.
+			mip = First mip level.
+			numMIPs = Number of mip levels.
+			layer = First array layer (or 3D depth slice base).
+			numLayers = Number of layers.
+		*/
+		{q{void}, q{clear}, q{TextureHandle handle, ubyte mip=0, ubyte numMIPs=ubyte.max, ushort layer=0, ushort numLayers=ushort.max}, ext: `C++, "bgfx"`},
 		
 		/**
 		* Read back texture content.
@@ -4084,6 +4121,20 @@ mixin(joinFnBinds((){
 			format = Texture format. See: `TextureFormat::Enum`.
 		*/
 		{q{void}, q{setImage}, q{ubyte stage, TextureHandle handle, ubyte mip, bgfx.impl.Access.Enum access, bgfx.impl.TextureFormat.Enum format=TextureFormat.count}, ext: `C++, "bgfx"`},
+		
+		/**
+		* Set compute image stage for draw primitive, selecting a sub-range of the
+		* texture's array layers and mip levels.
+		Params:
+			stage = Compute stage.
+			handle = Texture handle.
+			firstLayer = First array layer.
+			numLayers = Number of array layers.
+			mip = Mip level.
+			access = Image access. See `Access::Enum`.
+			format = Texture format. See: `TextureFormat::Enum`.
+		*/
+		{q{void}, q{setImage}, q{ubyte stage, TextureHandle handle, ushort firstLayer, ushort numLayers, ubyte mip, bgfx.impl.Access.Enum access, bgfx.impl.TextureFormat.Enum format=TextureFormat.count}, ext: `C++, "bgfx"`},
 		
 		/**
 		* Dispatch compute.

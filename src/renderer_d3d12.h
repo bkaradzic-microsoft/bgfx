@@ -131,7 +131,7 @@ namespace bgfx { namespace d3d12
 		void  allocSrv(D3D12_GPU_DESCRIPTOR_HANDLE& _gpuHandle, struct TextureD3D12& _texture, uint16_t _firstLayer = 0, uint16_t _numLayers = UINT16_MAX, uint8_t _firstMip = 0, uint8_t _numMips = UINT8_MAX);
 		void  allocSrv(D3D12_GPU_DESCRIPTOR_HANDLE& _gpuHandle, struct BufferD3D12& _buffer);
 
-		void  allocUav(D3D12_GPU_DESCRIPTOR_HANDLE& _gpuHandle, struct TextureD3D12& _texture, uint8_t _mip = 0);
+		void  allocUav(D3D12_GPU_DESCRIPTOR_HANDLE& _gpuHandle, struct TextureD3D12& _texture, uint8_t _mip = 0, uint16_t _firstLayer = 0, uint16_t _numLayers = UINT16_MAX);
 		void  allocSrv(D3D12_GPU_DESCRIPTOR_HANDLE& _gpuHandle, ID3D12Resource* _resource, const D3D12_SHADER_RESOURCE_VIEW_DESC& _desc);
 
 		void  allocUav(D3D12_GPU_DESCRIPTOR_HANDLE& _gpuHandle, struct BufferD3D12& _buffer);
@@ -374,6 +374,7 @@ namespace bgfx { namespace d3d12
 		void* create(const Memory* _mem, uint64_t _flags, uint8_t _skip, uint64_t _external);
 		void destroy();
 		void overrideInternal(uintptr_t _ptr);
+		void clear(ID3D12GraphicsCommandList* _commandList, uint8_t _mip, uint8_t _numMips, uint16_t _layer, uint16_t _numLayers);
 		void update(ID3D12GraphicsCommandList* _commandList, uint8_t _side, uint8_t _mip, const Rect& _rect, uint16_t _z, uint16_t _depth, uint16_t _pitch, const Memory* _mem);
 		void resolve(ID3D12GraphicsCommandList* _commandList, uint8_t _resolve, uint32_t _layer, uint32_t _numLayers, uint32_t _mip);
 		D3D12_RESOURCE_STATES setState(ID3D12GraphicsCommandList* _commandList, D3D12_RESOURCE_STATES _state);
