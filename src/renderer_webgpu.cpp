@@ -98,6 +98,18 @@ namespace bgfx { namespace wgpu
 			{ WGPUVertexFormat_Float32x3, WGPUVertexFormat_Float32x3 },
 			{ WGPUVertexFormat_Float32x4, WGPUVertexFormat_Float32x4 },
 		},
+		{ // Int32 (32-bit integers can't be normalized; both slots are the SINT format)
+			{ WGPUVertexFormat_Sint32,    WGPUVertexFormat_Sint32    },
+			{ WGPUVertexFormat_Sint32x2,  WGPUVertexFormat_Sint32x2  },
+			{ WGPUVertexFormat_Sint32x3,  WGPUVertexFormat_Sint32x3  },
+			{ WGPUVertexFormat_Sint32x4,  WGPUVertexFormat_Sint32x4  },
+		},
+		{ // Uint32
+			{ WGPUVertexFormat_Uint32,    WGPUVertexFormat_Uint32    },
+			{ WGPUVertexFormat_Uint32x2,  WGPUVertexFormat_Uint32x2  },
+			{ WGPUVertexFormat_Uint32x3,  WGPUVertexFormat_Uint32x3  },
+			{ WGPUVertexFormat_Uint32x4,  WGPUVertexFormat_Uint32x4  },
+		},
 	};
 	static_assert(AttribType::Count == BX_COUNTOF(s_attribType) );
 
@@ -1305,6 +1317,10 @@ WGPU_IMPORT
 						BX_TRACE("\t    VendorId: %x", adapterInfo.vendorID);
 						BX_TRACE("\t    DeviceId: %x", adapterInfo.deviceID);
 
+						m_webgpuInfo.set(toStringView(adapterInfo.architecture) );
+						m_webgpuInfo.append(" / ");
+						m_webgpuInfo.append(s_backendType[bx::min<uint32_t>(adapterInfo.backendType, BX_COUNTOF(s_backendType)-1)]);
+
 						BX_TRACE("\tBackend type (%x): %s"
 							, adapterInfo.backendType
 							, s_backendType[bx::min<uint32_t>(adapterInfo.backendType, BX_COUNTOF(s_backendType)-1)]
@@ -1366,6 +1382,8 @@ WGPU_IMPORT
 						g_caps.limits.maxComputeBindings = BGFX_CONFIG_MAX_TEXTURE_SAMPLERS;
 						g_caps.limits.maxFBAttachments   = bx::min(m_limits.maxColorAttachments, BGFX_CONFIG_MAX_FRAME_BUFFER_ATTACHMENTS);
 						g_caps.limits.maxVertexStreams   = bx::min(m_limits.maxVertexBuffers, BGFX_CONFIG_MAX_VERTEX_STREAMS);
+						g_caps.limits.maxVertexAttributes = m_limits.maxVertexAttributes;
+						g_caps.limits.maxInstanceData    = bx::min<uint32_t>(g_caps.limits.maxInstanceData, g_caps.limits.maxVertexAttributes);
 
 						g_caps.supported = 0
 							| BGFX_CAPS_ALPHA_TO_COVERAGE
@@ -1681,6 +1699,11 @@ WGPU_IMPORT
 		void updateTexture(TextureHandle _handle, uint8_t _side, uint8_t _mip, const Rect& _rect, uint16_t _z, uint16_t _depth, uint16_t _pitch, const Memory* _mem) override
 		{
 			m_textures[_handle.idx].update(_side, _mip, _rect, _z, _depth, _pitch, _mem);
+		}
+
+		void clearTexture(TextureHandle _handle, uint8_t _mip, uint8_t _numMips, uint16_t _layer, uint16_t _numLayers) override
+		{
+			m_textures[_handle.idx].clear(_mip, _numMips, _layer, _numLayers);
 		}
 
 		bool s_done;
@@ -2028,7 +2051,7 @@ WGPU_IMPORT
 				, 1
 				, state
 				, 0
-				, packStencil(BGFX_STENCIL_DEFAULT, BGFX_STENCIL_DEFAULT)
+				, packStencil(BGFX_STENCIL_NONE, BGFX_STENCIL_NONE)
 				, 1
 				, &stream
 				, 0
@@ -2752,7 +2775,10 @@ WGPU_IMPORT
 				| BGFX_STATE_PT_MASK
 				;
 
-			_stencil &= kStencilNoRefMask;
+			_stencil = stencilEnabled(_stencil)
+				? (_stencil & kStencilNoRefMask)
+				: 0
+				;
 
 			const uint8_t numVertexStreams = bx::countBits(_streamMask);
 
@@ -3117,7 +3143,7 @@ WGPU_IMPORT
 								.size        = 0,
 								.sampler     = NULL,
 								.textureView = _isCompute
-									? texture.getTextureView(bind.m_firstMip, bind.m_numMips, Binding::Image == bind.m_type)
+									? texture.getTextureView(bind.m_firstMip, bind.m_numMips, Binding::Image == bind.m_type, 0, UINT16_MAX, Binding::Image == bind.m_type && UINT16_MAX != bind.m_numLayers)
 									: texture.getTextureView(bind.m_firstMip, bind.m_numMips, false, bind.m_firstLayer, bind.m_numLayers)
 									,
 							};
@@ -3307,12 +3333,12 @@ WGPU_IMPORT
 				_stencil = 0;
 			}
 
-			_stencil = 0 == _stencil ? kStencilDisabled : _stencil;
+			_stencil = !stencilEnabled(_stencil) ? kStencilDisabled : _stencil;
 
+			const uint8_t  writeMask = unpackStencilWriteMask(_stencil);
 			const uint32_t fstencil = unpackStencil(0, _stencil);
-			      uint32_t bstencil = unpackStencil(1, _stencil);
-			const uint32_t frontAndBack = bstencil != BGFX_STENCIL_NONE && bstencil != fstencil;
-			bstencil = frontAndBack ? bstencil : fstencil;
+			const uint32_t frontAndBack = stencilFrontAndBack(_stencil);
+			      uint32_t bstencil = frontAndBack ? unpackStencil(1, _stencil) : fstencil;
 
 			const uint32_t func = (_state&BGFX_STATE_DEPTH_TEST_MASK)>>BGFX_STATE_DEPTH_TEST_SHIFT;
 
@@ -3337,7 +3363,7 @@ WGPU_IMPORT
 					.passOp      = s_stencilOp[(bstencil & BGFX_STENCIL_OP_PASS_Z_MASK) >> BGFX_STENCIL_OP_PASS_Z_SHIFT],
 				},
 				.stencilReadMask     = (fstencil & BGFX_STENCIL_FUNC_RMASK_MASK) >> BGFX_STENCIL_FUNC_RMASK_SHIFT,
-				.stencilWriteMask    = 0xff,
+				.stencilWriteMask    = writeMask,
 				.depthBias           = 0,
 				.depthBiasSlopeScale = 0.0f,
 				.depthBiasClamp      = 0.0f,
@@ -3355,7 +3381,8 @@ WGPU_IMPORT
 		OcclusionQueryWGPU       m_occlusionQuery;
 		ChunkedScratchBufferWGPU m_uniformScratchBuffer;
 
-		WGPULimits m_limits;
+		bx::FixedString256 m_webgpuInfo;
+		WGPULimits         m_limits;
 
 		uint32_t         m_maxFrameLatency;
 		CommandQueueWGPU m_cmd;
@@ -4176,6 +4203,81 @@ WGPU_IMPORT
 
 		wgpuDestroy(m_texture);
 		wgpuDestroy(m_textureResolve);
+	}
+
+	void TextureWGPU::clear(uint8_t _mip, uint8_t _numMips, uint16_t _layer, uint16_t _numLayers)
+	{
+		const bimg::TextureFormat::Enum format = bimg::TextureFormat::Enum(m_textureFormat);
+
+		if (0 != (m_flags & BGFX_TEXTURE_RT_WRITE_ONLY) )
+		{
+			return;
+		}
+
+		const bool     is3D    = TextureWGPU::Texture3D == m_type;
+		const uint32_t bpp     = bimg::getBitsPerPixel(format);
+		const uint8_t  numMips = (UINT8_MAX == _numMips)
+			? uint8_t(m_numMips - _mip)
+			: _numMips
+			;
+
+		const uint32_t tileDim     = textureZeroInitTileDim(bpp);
+		const uint32_t bytesPerRow = tileDim*bpp/8;
+		uint8_t zeros[kTextureZeroInitBudget] = {};
+		BX_ASSERT(bytesPerRow*tileDim <= sizeof(zeros), "Zero-init tile exceeds budget.");
+
+		for (uint8_t mip = _mip, mipEnd = uint8_t(_mip + numMips); mip < mipEnd; ++mip)
+		{
+			const uint32_t mipW = bx::max(1u, m_width  >> mip);
+			const uint32_t mipH = bx::max(1u, m_height >> mip);
+
+			const uint32_t totalSlices = is3D
+				? bx::max(1u, m_depth >> mip)
+				: m_numSides
+				;
+			const uint32_t numSlices = (UINT16_MAX == _numLayers)
+				? (totalSlices - _layer)
+				: _numLayers
+				;
+
+			for (uint32_t slice = _layer, sliceEnd = _layer + numSlices; slice < sliceEnd; ++slice)
+			{
+				for (uint32_t yy = 0; yy < mipH; yy += tileDim)
+				{
+					const uint32_t th = bx::min<uint32_t>(tileDim, mipH - yy);
+
+					for (uint32_t xx = 0; xx < mipW; xx += tileDim)
+					{
+						const uint32_t tw = bx::min<uint32_t>(tileDim, mipW - xx);
+
+						s_renderWGPU->m_cmd.writeTexture(
+							{
+								.texture  = m_texture,
+								.mipLevel = mip,
+								.origin =
+								{
+									.x = xx,
+									.y = yy,
+									.z = slice,
+								},
+								.aspect = WGPUTextureAspect_All,
+							}
+							, zeros
+							, bytesPerRow*th
+							, {
+								.offset       = 0,
+								.bytesPerRow  = bytesPerRow,
+								.rowsPerImage = th,
+							}
+							, {
+								.width              = tw,
+								.height             = th,
+								.depthOrArrayLayers = 1,
+							});
+					}
+				}
+			}
+		}
 	}
 
 	void TextureWGPU::update(uint8_t _side, uint8_t _mip, const Rect& _rect, uint16_t _z, uint16_t _depth, uint16_t _pitch, const Memory* _mem)
@@ -6293,11 +6395,19 @@ m_resolution.formatColor = TextureFormat::BGRA8;
 				constexpr uint64_t kF1 = BGFX_STATE_BLEND_INV_FACTOR;
 				constexpr uint64_t kF2 = BGFX_STATE_BLEND_FACTOR<<4;
 				constexpr uint64_t kF3 = BGFX_STATE_BLEND_INV_FACTOR<<4;
+				constexpr uint64_t kF4 = BGFX_STATE_BLEND_FACTOR<<8;
+				constexpr uint64_t kF5 = BGFX_STATE_BLEND_INV_FACTOR<<8;
+				constexpr uint64_t kF6 = BGFX_STATE_BLEND_FACTOR<<12;
+				constexpr uint64_t kF7 = BGFX_STATE_BLEND_INV_FACTOR<<12;
 				bool hasFactor = 0
 					|| kF0 == (state & kF0)
 					|| kF1 == (state & kF1)
 					|| kF2 == (state & kF2)
 					|| kF3 == (state & kF3)
+					|| kF4 == (state & kF4)
+					|| kF5 == (state & kF5)
+					|| kF6 == (state & kF6)
+					|| kF7 == (state & kF7)
 					;
 
 				if (hasFactor
@@ -6689,6 +6799,8 @@ m_resolution.formatColor = TextureFormat::BGRA8;
 					, BGFX_API_VERSION
 					, BGFX_REV_NUMBER
 					);
+				const bx::StringView str = m_webgpuInfo;
+				tvm.printf(0, pos++, 0x8f, " WebGPU vendor info: %S ", &str);
 
 				pos = 10;
 				tvm.printf(10, pos++, 0x8b, "       Frame: % 7.3f, % 7.3f \x1f, % 7.3f \x1e [ms] / % 6.2f FPS "

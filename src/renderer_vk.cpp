@@ -489,6 +489,27 @@ VK_IMPORT_DEVICE
 		return supported;
 	}
 
+	static bool wsiSurfaceSupported()
+	{
+#if BX_PLATFORM_WINDOWS
+		return s_extension[Extension::KHR_win32_surface].m_supported;
+#elif BX_PLATFORM_ANDROID
+		return s_extension[Extension::KHR_android_surface].m_supported;
+#elif BX_PLATFORM_LINUX
+		return false
+			|| s_extension[Extension::KHR_wayland_surface].m_supported
+			|| s_extension[Extension::KHR_xlib_surface   ].m_supported
+			|| s_extension[Extension::KHR_xcb_surface    ].m_supported
+			;
+#elif BX_PLATFORM_OSX
+		return s_extension[Extension::MVK_macos_surface].m_supported;
+#elif BX_PLATFORM_NX
+		return s_extension[Extension::NN_vi_surface].m_supported;
+#else
+		return false;
+#endif // BX_PLATFORM_*
+	}
+
 	static const VkFormat s_attribType[][4][2] =
 	{
 		{ // Int8
@@ -532,6 +553,18 @@ VK_IMPORT_DEVICE
 			{ VK_FORMAT_R32G32_SFLOAT,           VK_FORMAT_R32G32_SFLOAT            },
 			{ VK_FORMAT_R32G32B32_SFLOAT,        VK_FORMAT_R32G32B32_SFLOAT         },
 			{ VK_FORMAT_R32G32B32A32_SFLOAT,     VK_FORMAT_R32G32B32A32_SFLOAT      },
+		},
+		{ // Int32 (32-bit integers can't be normalized; both slots are the SINT format)
+			{ VK_FORMAT_R32_SINT,                VK_FORMAT_R32_SINT                 },
+			{ VK_FORMAT_R32G32_SINT,             VK_FORMAT_R32G32_SINT              },
+			{ VK_FORMAT_R32G32B32_SINT,          VK_FORMAT_R32G32B32_SINT           },
+			{ VK_FORMAT_R32G32B32A32_SINT,       VK_FORMAT_R32G32B32A32_SINT        },
+		},
+		{ // Uint32
+			{ VK_FORMAT_R32_UINT,                VK_FORMAT_R32_UINT                 },
+			{ VK_FORMAT_R32G32_UINT,             VK_FORMAT_R32G32_UINT              },
+			{ VK_FORMAT_R32G32B32_UINT,          VK_FORMAT_R32G32B32_UINT           },
+			{ VK_FORMAT_R32G32B32A32_UINT,       VK_FORMAT_R32G32B32A32_UINT        },
 		},
 	};
 	static_assert(AttribType::Count == BX_COUNTOF(s_attribType) );
@@ -577,7 +610,7 @@ VK_IMPORT_DEVICE
 
 		uint32_t numBindings = _vertexInputState.vertexBindingDescriptionCount;
 		uint32_t numAttribs  = _vertexInputState.vertexAttributeDescriptionCount;
-		VkVertexInputBindingDescription*   inputBinding = const_cast<VkVertexInputBindingDescription*>(_vertexInputState.pVertexBindingDescriptions + numBindings);
+		VkVertexInputBindingDescription*   inputBinding = const_cast<VkVertexInputBindingDescription  *>(_vertexInputState.pVertexBindingDescriptions   + numBindings);
 		VkVertexInputAttributeDescription* inputAttrib  = const_cast<VkVertexInputAttributeDescription*>(_vertexInputState.pVertexAttributeDescriptions + numAttribs);
 
 		inputBinding->binding   = numBindings;
@@ -1187,6 +1220,8 @@ VK_IMPORT_DEVICE
 			);
 	}
 
+	struct TextureVK;
+
 	struct RendererContextVK : public RendererContextI
 	{
 		RendererContextVK()
@@ -1336,7 +1371,8 @@ VK_IMPORT
 				uint32_t numEnabledExtensions = 0;
 				const char* enabledExtension[Extension::Count + 1];
 
-				if (!headless)
+				if (!headless
+				||  wsiSurfaceSupported() )
 				{
 					enabledExtension[numEnabledExtensions++] = VK_KHR_SURFACE_EXTENSION_NAME;
 				}
@@ -1774,7 +1810,7 @@ VK_IMPORT_INSTANCE
 					| (m_deviceFeatures.fullDrawIndexUint32 ? BGFX_CAPS_INDEX32 : 0)
 					| BGFX_CAPS_INSTANCING
 					| BGFX_CAPS_OCCLUSION_QUERY
-					| (!headless ? BGFX_CAPS_SWAP_CHAIN : 0)
+					| ( (!headless || wsiSurfaceSupported() ) ? BGFX_CAPS_SWAP_CHAIN : 0)
 					| BGFX_CAPS_TEXTURE_2D_ARRAY
 					| BGFX_CAPS_TEXTURE_3D
 					| BGFX_CAPS_TEXTURE_BLIT
@@ -1812,6 +1848,8 @@ VK_IMPORT_INSTANCE
 				g_caps.limits.maxTextureSamplers = bx::min<uint32_t>(m_deviceProperties.limits.maxPerStageResources, BGFX_CONFIG_MAX_TEXTURE_SAMPLERS);
 				g_caps.limits.maxComputeBindings = bx::min<uint32_t>(m_deviceProperties.limits.maxPerStageResources, BGFX_MAX_COMPUTE_BINDINGS);
 				g_caps.limits.maxVertexStreams   = bx::min<uint32_t>(m_deviceProperties.limits.maxVertexInputBindings, BGFX_CONFIG_MAX_VERTEX_STREAMS);
+				g_caps.limits.maxVertexAttributes = m_deviceProperties.limits.maxVertexInputAttributes;
+				g_caps.limits.maxInstanceData    = bx::min<uint32_t>(g_caps.limits.maxInstanceData, g_caps.limits.maxVertexAttributes);
 
 				{
 					const VkSampleCountFlags sampleMask = ~0
@@ -1962,6 +2000,12 @@ VK_IMPORT_INSTANCE
 				}
 			}
 
+			if (UINT32_MAX == m_videoDecodeQueueFamily
+			||  NULL != g_platformData.context)
+			{
+				m_videoDecodeQueueFamily = m_globalQueueFamily;
+			}
+
 			if (NULL != g_platformData.context)
 			{
 				m_device =
@@ -1991,7 +2035,8 @@ VK_IMPORT_INSTANCE
 
 				enabledExtension[numEnabledExtensions++] = VK_KHR_MAINTENANCE1_EXTENSION_NAME;
 
-				if (!headless)
+				if (!headless
+				||  wsiSurfaceSupported() )
 				{
 					enabledExtension[numEnabledExtensions++] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
 				}
@@ -2023,11 +2068,6 @@ VK_IMPORT_INSTANCE
 				for (uint32_t ii = 0; ii < numEnabledExtensions; ++ii)
 				{
 					BX_TRACE("\t%s", enabledExtension[ii]);
-				}
-
-				if (UINT32_MAX == m_videoDecodeQueueFamily)
-				{
-					m_videoDecodeQueueFamily = m_globalQueueFamily;
 				}
 
 				const float queuePriorities[] = { 0.0f };
@@ -2196,6 +2236,19 @@ VK_IMPORT_DEVICE
 								}
 							}
 						}
+					}
+				}
+				else
+				{
+					static const TextureFormat::Enum headlessBackbufferFormats[] =
+					{
+						TextureFormat::BGRA8,
+						TextureFormat::RGBA8,
+					};
+
+					for (uint32_t ii = 0; ii < BX_COUNTOF(headlessBackbufferFormats); ++ii)
+					{
+						g_caps.formats[headlessBackbufferFormats[ii] ] |= BGFX_CAPS_FORMAT_TEXTURE_BACKBUFFER;
 					}
 				}
 			}
@@ -2562,6 +2615,11 @@ VK_IMPORT_DEVICE
 			m_textures[_handle.idx].update(m_commandBuffer, _side, _mip, _rect, _z, _depth, _pitch, _mem);
 		}
 
+		void clearTexture(TextureHandle _handle, uint8_t _mip, uint8_t _numMips, uint16_t _layer, uint16_t _numLayers) override
+		{
+			m_textures[_handle.idx].clear(m_commandBuffer, _mip, _numMips, _layer, _numLayers);
+		}
+
 		void readTexture(TextureHandle _handle, void* _data, uint16_t _layer, uint8_t _mip) override
 		{
 			TextureVK& texture = m_textures[_handle.idx];
@@ -2661,6 +2719,11 @@ VK_IMPORT_DEVICE
 		void destroyFrameBuffer(FrameBufferHandle _handle) override
 		{
 			FrameBufferVK& frameBuffer = m_frameBuffers[_handle.idx];
+
+			if (m_fbh.idx == _handle.idx)
+			{
+				m_fbh = BGFX_INVALID_HANDLE;
+			}
 
 			uint16_t denseIdx = frameBuffer.destroy();
 			if (UINT16_MAX != denseIdx)
@@ -2865,7 +2928,7 @@ VK_IMPORT_DEVICE
 			const VertexLayout* layout = &m_vertexLayouts[_blitter.m_vb->layoutHandle.idx];
 			VkPipeline pso = getPipeline(state
 				, 0
-				, packStencil(BGFX_STENCIL_DEFAULT, BGFX_STENCIL_DEFAULT)
+				, packStencil(BGFX_STENCIL_NONE, BGFX_STENCIL_NONE)
 				, 1
 				, &layout
 				, _blitter.m_program
@@ -3141,12 +3204,6 @@ VK_IMPORT_DEVICE
 		{
 			BGFX_PROFILER_SCOPE("RendererContextVK::setFrameBuffer()", kColorFrame);
 
-			BX_ASSERT(false
-				  ||  isValid(_fbh)
-				  ||  NULL != m_backBuffer.m_nwh
-				, "Rendering to backbuffer in headless mode."
-				);
-
 			FrameBufferVK& newFrameBuffer = isValid(_fbh)
 				? m_frameBuffers[_fbh.idx]
 				: m_backBuffer
@@ -3182,6 +3239,13 @@ VK_IMPORT_DEVICE
 						texture.setState(m_commandBuffer, texture.m_sampledLayout);
 					}
 				}
+			}
+
+			if (!isValid(_fbh)
+			&&  NULL == m_backBuffer.m_nwh)
+			{
+				m_fbh = _fbh;
+				return;
 			}
 
 			if (NULL == newFrameBuffer.m_nwh)
@@ -3376,11 +3440,10 @@ VK_IMPORT_DEVICE
 			_desc.depthCompareOp   = s_cmpFunc[func];
 			_desc.depthBoundsTestEnable = VK_FALSE;
 
-			_desc.stencilTestEnable = 0 != _stencil;
+			_desc.stencilTestEnable = stencilEnabled(_stencil);
 
-			uint32_t bstencil = unpackStencil(1, _stencil);
-			uint32_t frontAndBack = bstencil != BGFX_STENCIL_NONE && bstencil != fstencil;
-			bstencil = frontAndBack ? bstencil : fstencil;
+			uint32_t frontAndBack = stencilFrontAndBack(_stencil);
+			uint32_t bstencil = frontAndBack ? unpackStencil(1, _stencil) : fstencil;
 
 			_desc.front.failOp      = s_stencilOp[(fstencil & BGFX_STENCIL_OP_FAIL_S_MASK) >> BGFX_STENCIL_OP_FAIL_S_SHIFT];
 			_desc.front.passOp      = s_stencilOp[(fstencil & BGFX_STENCIL_OP_PASS_Z_MASK) >> BGFX_STENCIL_OP_PASS_Z_SHIFT];
@@ -3888,7 +3951,7 @@ VK_IMPORT_DEVICE
 				| BGFX_STATE_PT_MASK
 				;
 
-			_stencil &= kStencilNoRefMask;
+			_stencil &= kStencilNoRefAndRwMask;
 
 			VertexLayout layout;
 			if (0 < _numStreams)
@@ -3989,6 +4052,7 @@ VK_IMPORT_DEVICE
 				VK_DYNAMIC_STATE_SCISSOR,
 				VK_DYNAMIC_STATE_BLEND_CONSTANTS,
 				VK_DYNAMIC_STATE_STENCIL_REFERENCE,
+				VK_DYNAMIC_STATE_STENCIL_WRITE_MASK,
 				VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR, // optional
 			};
 
@@ -4164,7 +4228,7 @@ VK_IMPORT_DEVICE
 			const VkResult result = vkAllocateDescriptorSets(m_device, &dsai, &descriptorSet);
 
 			if (VK_SUCCESS != result
-			&&  m_descriptorPoolIdx + 1 < kMaxDescriptorPoolChunks)
+			&&  uint32_t(m_descriptorPoolIdx + 1) < kMaxDescriptorPoolChunks)
 			{
 				++m_descriptorPoolIdx;
 
@@ -4238,6 +4302,12 @@ VK_IMPORT_DEVICE
 							}
 							else if (type == VK_IMAGE_VIEW_TYPE_CUBE
 							     ||  type == VK_IMAGE_VIEW_TYPE_CUBE_ARRAY)
+							{
+								type = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+							}
+
+							if (UINT16_MAX != bind.m_numLayers
+							&&  VK_IMAGE_VIEW_TYPE_2D == type)
 							{
 								type = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
 							}
@@ -6345,9 +6415,10 @@ VK_DESTROY
 
 	uint32_t ReadbackVK::pitch(uint8_t _mip) const
 	{
-		uint32_t mipWidth = bx::max(1, m_width >> _mip);
-		uint8_t bpp = bimg::getBitsPerPixel(bimg::TextureFormat::Enum(m_format) );
-		return mipWidth * bpp / 8;
+		const uint32_t mipWidth = bx::max(1, m_width >> _mip);
+		const bimg::ImageBlockInfo& blockInfo = bimg::getBlockInfo(bimg::TextureFormat::Enum(m_format) );
+		const uint32_t numBlocksX = (mipWidth + blockInfo.blockWidth - 1) / blockInfo.blockWidth;
+		return numBlocksX * blockInfo.blockSize;
 	}
 
 	void ReadbackVK::copyImageToBuffer(VkCommandBuffer _commandBuffer, VkBuffer _buffer, VkImageLayout _layout, VkImageAspectFlags _aspect, uint16_t _layer, uint8_t _mip) const
@@ -6356,6 +6427,10 @@ VK_DESTROY
 
 		uint32_t mipWidth  = bx::max(1, m_width  >> _mip);
 		uint32_t mipHeight = bx::max(1, m_height >> _mip);
+
+		const bimg::ImageBlockInfo& blockInfo = bimg::getBlockInfo(bimg::TextureFormat::Enum(m_format) );
+		const uint32_t numBlocksX = (mipWidth  + blockInfo.blockWidth  - 1) / blockInfo.blockWidth;
+		const uint32_t numBlocksY = (mipHeight + blockInfo.blockHeight - 1) / blockInfo.blockHeight;
 
 		setImageMemoryBarrier(
 			  _commandBuffer
@@ -6371,8 +6446,8 @@ VK_DESTROY
 
 		VkBufferImageCopy bic;
 		bic.bufferOffset = 0;
-		bic.bufferRowLength   = mipWidth;
-		bic.bufferImageHeight = mipHeight;
+		bic.bufferRowLength   = numBlocksX * blockInfo.blockWidth;
+		bic.bufferImageHeight = numBlocksY * blockInfo.blockHeight;
 		bic.imageSubresource.aspectMask     = _aspect;
 		bic.imageSubresource.mipLevel       = _mip;
 		bic.imageSubresource.baseArrayLayer = _layer;
@@ -6421,11 +6496,14 @@ VK_DESTROY
 		const uint32_t mipHeight = bx::max(1, m_height >> _mip);
 		const uint32_t rowPitch = pitch(_mip);
 
+		const bimg::ImageBlockInfo& blockInfo = bimg::getBlockInfo(bimg::TextureFormat::Enum(m_format) );
+		const uint32_t numRows = (mipHeight + blockInfo.blockHeight - 1) / blockInfo.blockHeight;
+
 		const uint8_t* src;
 		VK_CHECK(vkMapMemory(s_renderVK->m_device, _memory, 0, VK_WHOLE_SIZE, 0, (void**)&src) );
 		src += _offset;
 
-		bx::gather(_data, src, rowPitch, rowPitch, mipHeight);
+		bx::gather(_data, src, rowPitch, rowPitch, numRows);
 
 		vkUnmapMemory(s_renderVK->m_device, _memory);
 	}
@@ -6797,15 +6875,17 @@ VK_DESTROY
 						}
 						else if (compressed)
 						{
-							const uint32_t pitch = bx::strideAlign( (mip.m_width / blockInfo.blockWidth) * mip.m_blockSize, alignment);
-							const uint32_t slice = bx::strideAlign( (mip.m_height / blockInfo.blockHeight) * pitch, alignment);
+							const uint32_t numBlocksX = (mip.m_width  + blockInfo.blockWidth  - 1) / blockInfo.blockWidth;
+							const uint32_t numBlocksY = (mip.m_height + blockInfo.blockHeight - 1) / blockInfo.blockHeight;
+							const uint32_t pitch = bx::strideAlign(numBlocksX * mip.m_blockSize, alignment);
+							const uint32_t slice = bx::strideAlign(numBlocksY * pitch, alignment);
 							const uint32_t size  = slice * mip.m_depth;
 
 							uint8_t* temp = (uint8_t*)bx::alloc(g_allocator, size);
 							bimg::imageCopy(
 								  temp
-								, mip.m_height / blockInfo.blockHeight
-								, (mip.m_width / blockInfo.blockWidth) * mip.m_blockSize
+								, numBlocksY
+								, numBlocksX * mip.m_blockSize
 								, mip.m_depth
 								, mip.m_data
 								, pitch
@@ -7019,8 +7099,14 @@ VK_DESTROY
 			numRows    = numBlocksY;
 		}
 
-		const uint32_t srcPitch = UINT16_MAX == _pitch ? rectPitch : _pitch;
-		const uint32_t size = convert || UINT16_MAX == _pitch
+		const bool repackPitch = true
+			&& !convert
+			&& UINT16_MAX != _pitch
+			&& _pitch != rectPitch
+			;
+
+		const uint32_t srcPitch = (UINT16_MAX == _pitch || repackPitch) ? rectPitch : _pitch;
+		const uint32_t size = convert || UINT16_MAX == _pitch || repackPitch
 			? slicePitch * _depth
 			: numRows * srcPitch * _depth
 			;
@@ -7029,7 +7115,8 @@ VK_DESTROY
 		// formats, must be a multiple of the block width.
 		uint32_t bufferRowLength = 0;
 		if (!convert
-		&&  UINT16_MAX != _pitch)
+		&&  UINT16_MAX != _pitch
+		&&  !repackPitch)
 		{
 			bufferRowLength = compressed
 				? (srcPitch / blockInfo.blockSize) * blockInfo.blockWidth
@@ -7059,6 +7146,12 @@ VK_DESTROY
 
 			region.imageExtent.width  = bx::clamp<uint32_t>(region.imageExtent.width,  0u, bx::max(1u, m_width  >> _mip) - _rect.m_x);
 			region.imageExtent.height = bx::clamp<uint32_t>(region.imageExtent.height, 0u, bx::max(1u, m_height >> _mip) - _rect.m_y);
+		}
+		else if (repackPitch)
+		{
+			temp = (uint8_t*)bx::alloc(g_allocator, slicePitch * _depth);
+			bimg::imageCopy(temp, numRows, _pitch, _depth, data, rectPitch);
+			data = temp;
 		}
 
 		StagingBufferVK stagingBuffer = s_renderVK->allocFromScratchStagingBuffer(size, align, data);
@@ -7300,6 +7393,44 @@ VK_DESTROY
 				);
 
 			currentLayout = _newImageLayout;
+		}
+	}
+
+	void TextureVK::clear(VkCommandBuffer _commandBuffer, uint8_t _mip, uint8_t _numMips, uint16_t _layer, uint16_t _numLayers)
+	{
+		const VkImageLayout saved = m_currentImageLayout;
+		setState(_commandBuffer, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+		const VkClearColorValue clearColor = { { 0.0f, 0.0f, 0.0f, 0.0f } };
+
+		VkImageSubresourceRange range =
+		{
+			.aspectMask     = m_aspectFlags,
+			.baseMipLevel   = _mip,
+			.levelCount     = (UINT8_MAX  == _numMips)
+				? VK_REMAINING_MIP_LEVELS
+				: _numMips
+				,
+			.baseArrayLayer = _layer,
+			.layerCount     = (UINT16_MAX == _numLayers)
+				? VK_REMAINING_ARRAY_LAYERS
+				: _numLayers
+				,
+		};
+
+		vkCmdClearColorImage(
+			  _commandBuffer
+			, m_textureImage
+			, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+			, &clearColor
+			, 1
+			, &range
+			);
+
+		if (VK_IMAGE_LAYOUT_UNDEFINED      != saved
+		&&  VK_IMAGE_LAYOUT_PREINITIALIZED != saved)
+		{
+			setState(_commandBuffer, saved);
 		}
 	}
 
@@ -9369,6 +9500,10 @@ VK_DESTROY
 		const uint64_t f1 = BGFX_STATE_BLEND_INV_FACTOR;
 		const uint64_t f2 = BGFX_STATE_BLEND_FACTOR<<4;
 		const uint64_t f3 = BGFX_STATE_BLEND_INV_FACTOR<<4;
+		const uint64_t f4 = BGFX_STATE_BLEND_FACTOR<<8;
+		const uint64_t f5 = BGFX_STATE_BLEND_INV_FACTOR<<8;
+		const uint64_t f6 = BGFX_STATE_BLEND_FACTOR<<12;
+		const uint64_t f7 = BGFX_STATE_BLEND_INV_FACTOR<<12;
 
 		const uint32_t descriptorFrame = m_cmd.m_currentFrameInFlight;
 		for (uint32_t ii = 0; ii < m_numDescriptorPools[descriptorFrame]; ++ii)
@@ -9954,7 +10089,7 @@ VK_DESTROY
 						vkCmdBindPipeline(m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 					}
 
-					const bool hasStencil = 0 != draw.m_stencil;
+					const bool hasStencil = stencilEnabled(draw.m_stencil);
 
 					if (hasStencil
 					&&  currentState.m_stencil != draw.m_stencil)
@@ -9964,6 +10099,7 @@ VK_DESTROY
 						const uint32_t fstencil = unpackStencil(0, draw.m_stencil);
 						const uint32_t ref = (fstencil&BGFX_STENCIL_FUNC_REF_MASK)>>BGFX_STENCIL_FUNC_REF_SHIFT;
 						vkCmdSetStencilReference(m_commandBuffer, VK_STENCIL_FRONT_AND_BACK, ref);
+						vkCmdSetStencilWriteMask(m_commandBuffer, VK_STENCIL_FRONT_AND_BACK, unpackStencilWriteMask(draw.m_stencil) );
 					}
 
 					const bool hasFactor = 0
@@ -9971,6 +10107,10 @@ VK_DESTROY
 						|| f1 == (draw.m_stateFlags & f1)
 						|| f2 == (draw.m_stateFlags & f2)
 						|| f3 == (draw.m_stateFlags & f3)
+						|| f4 == (draw.m_stateFlags & f4)
+						|| f5 == (draw.m_stateFlags & f5)
+						|| f6 == (draw.m_stateFlags & f6)
+						|| f7 == (draw.m_stateFlags & f7)
 						;
 
 					if (hasFactor

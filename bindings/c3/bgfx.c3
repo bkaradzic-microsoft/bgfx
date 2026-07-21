@@ -178,9 +178,12 @@ constdef StencilFlags : inline uint
 	FUNCREFMASK            = 0x000000ff,
 	FUNCRMASKSHIFT         = 8,
 	FUNCRMASKMASK          = 0x0000ff00,
-	NONE                   = 0x00000000,
+
+	// No stencil test.
+	NONE                   = 0x0000ff00,
+
+	// Stencil front or back mask.
 	MASK                   = 0xffffffff,
-	DEFAULT                = 0x00000000,
 
 	// Enable stencil test, less.
 	TESTLESS               = 0x00010000,
@@ -1069,6 +1072,30 @@ enum Attrib : uint
 	// a_texcoord7
 	TEXCOORD7,
 
+	// a_texcoord8
+	TEXCOORD8,
+
+	// a_texcoord9
+	TEXCOORD9,
+
+	// a_texcoord10
+	TEXCOORD10,
+
+	// a_texcoord11
+	TEXCOORD11,
+
+	// a_texcoord12
+	TEXCOORD12,
+
+	// a_texcoord13
+	TEXCOORD13,
+
+	// a_texcoord14
+	TEXCOORD14,
+
+	// a_texcoord15
+	TEXCOORD15,
+
 	COUNT
 }
 
@@ -1094,6 +1121,12 @@ enum AttribType : uint
 
 	// Float
 	FLOAT,
+
+	// Int32
+	INT32,
+
+	// Uint32
+	UINT32,
 
 	COUNT
 }
@@ -1657,6 +1690,10 @@ struct CapsLimits
 	uint maxVertexLayouts;
 	// Maximum number of vertex streams.
 	uint maxVertexStreams;
+	// Maximum number of vertex attributes.
+	uint maxVertexAttributes;
+	// Maximum number of instance data slots.
+	uint maxInstanceData;
 	// Maximum number of index buffer handles.
 	uint maxIndexBuffers;
 	// Maximum number of vertex buffer handles.
@@ -2182,9 +2219,9 @@ struct VertexLayout
 	// Stride.
 	ushort stride;
 	// Attribute offsets.
-	ushort[18] offset;
+	ushort[26] offset;
 	// Used attributes.
-	ushort[18] attributes;
+	ushort[26] attributes;
 }
 
 // Encoders are used for submitting draw calls from multiple threads. Only one encoder
@@ -2785,6 +2822,15 @@ extern fn void update_texture_3d(TextureHandle _handle, char _mip, ushort _x, us
 // _mem : `Texture update data.`
 // _pitch : `Pitch of input image (bytes). When _pitch is set to UINT16_MAX, it will be calculated internally based on _width.`
 extern fn void update_texture_cube(TextureHandle _handle, ushort _layer, char _side, char _mip, ushort _x, ushort _y, ushort _width, ushort _height, Memory* _mem, ushort _pitch) @cname("bgfx_update_texture_cube");
+
+// Clear a texture subresource range to zero.
+// 
+// _handle : `Texture handle.`
+// _mip : `First mip level.`
+// _numMips : `Number of mip levels.`
+// _layer : `First array layer (or 3D depth slice base).`
+// _numLayers : `Number of layers.`
+extern fn void clear_texture(TextureHandle _handle, char _mip, char _numMips, ushort _layer, ushort _numLayers) @cname("bgfx_clear_texture");
 
 // Read back texture content.
 // 
@@ -3437,6 +3483,17 @@ extern fn void encoder_set_compute_indirect_buffer(Encoder* _this, char _stage, 
 // _format : `Texture format. See: `TextureFormat::Enum`.`
 extern fn void encoder_set_image(Encoder* _this, char _stage, TextureHandle _handle, char _mip, Access _access, TextureFormat _format) @cname("bgfx_encoder_set_image");
 
+// Set compute image stage for draw primitive, selecting a sub-range of the
+// texture's array layers and mip levels.
+// _stage : `Compute stage.`
+// _handle : `Texture handle.`
+// _firstLayer : `First array layer.`
+// _numLayers : `Number of array layers.`
+// _mip : `Mip level.`
+// _access : `Image access. See `Access::Enum`.`
+// _format : `Texture format. See: `TextureFormat::Enum`.`
+extern fn void encoder_set_image_view(Encoder* _this, char _stage, TextureHandle _handle, ushort _firstLayer, ushort _numLayers, char _mip, Access _access, TextureFormat _format) @cname("bgfx_encoder_set_image_view");
+
 // Dispatch compute.
 // _id : `View id.`
 // _program : `Compute program.`
@@ -3863,6 +3920,17 @@ extern fn void set_compute_indirect_buffer(char _stage, IndirectBufferHandle _ha
 // _access : `Image access. See `Access::Enum`.`
 // _format : `Texture format. See: `TextureFormat::Enum`.`
 extern fn void set_image(char _stage, TextureHandle _handle, char _mip, Access _access, TextureFormat _format) @cname("bgfx_set_image");
+
+// Set compute image stage for draw primitive, selecting a sub-range of the
+// texture's array layers and mip levels.
+// _stage : `Compute stage.`
+// _handle : `Texture handle.`
+// _firstLayer : `First array layer.`
+// _numLayers : `Number of array layers.`
+// _mip : `Mip level.`
+// _access : `Image access. See `Access::Enum`.`
+// _format : `Texture format. See: `TextureFormat::Enum`.`
+extern fn void set_image_view(char _stage, TextureHandle _handle, ushort _firstLayer, ushort _numLayers, char _mip, Access _access, TextureFormat _format) @cname("bgfx_set_image_view");
 
 // Dispatch compute.
 // _id : `View id.`

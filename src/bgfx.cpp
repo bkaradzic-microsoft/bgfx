@@ -815,7 +815,7 @@ namespace bgfx
 		ShaderHandle vsh = createEmbeddedShader(s_embeddedShaders, g_caps.rendererType, "vs_debugfont");
 		ShaderHandle fsh = createEmbeddedShader(s_embeddedShaders, g_caps.rendererType, "fs_debugfont");
 
-		BX_ASSERT(isValid(vsh) && isValid(fsh), "Failed to create embedded blit shaders");
+		BX_ASSERT(isValid(vsh) && isValid(fsh), "Failed to create embedded debug font shaders");
 
 		m_program = createProgram(vsh, fsh, true);
 
@@ -2033,6 +2033,8 @@ namespace bgfx
 		LIMITS(maxComputeBindings);
 		LIMITS(maxVertexLayouts);
 		LIMITS(maxVertexStreams);
+		LIMITS(maxVertexAttributes);
+		LIMITS(maxInstanceData);
 		LIMITS(maxIndexBuffers);
 		LIMITS(maxVertexBuffers);
 		LIMITS(maxDynamicIndexBuffers);
@@ -3720,6 +3722,31 @@ namespace bgfx
 				}
 				break;
 
+			case CommandBuffer::ClearTexture:
+				{
+					BGFX_PROFILER_SCOPE("ClearTexture", kColorResource);
+
+					TextureHandle handle;
+					_cmdbuf.read(handle);
+
+					uint8_t mip;
+					_cmdbuf.read(mip);
+
+					uint8_t numMips;
+					_cmdbuf.read(numMips);
+
+					uint16_t layer;
+					_cmdbuf.read(layer);
+
+					uint16_t numLayers;
+					_cmdbuf.read(numLayers);
+
+					flushTextureUpdateBatch(_cmdbuf);
+
+					m_renderCtx->clearTexture(handle, mip, numMips, layer, numLayers);
+				}
+				break;
+
 			case CommandBuffer::ReadTexture:
 				{
 					BGFX_PROFILER_SCOPE("ReadTexture", kColorResource);
@@ -4077,8 +4104,10 @@ namespace bgfx
 		g_caps.limits.maxTextures             = BGFX_CONFIG_MAX_TEXTURES;
 		g_caps.limits.maxTextureSamplers      = BGFX_CONFIG_MAX_TEXTURE_SAMPLERS;
 		g_caps.limits.maxComputeBindings      = 0;
+		g_caps.limits.maxInstanceData         = BGFX_CONFIG_MAX_INSTANCE_DATA_COUNT;
 		g_caps.limits.maxVertexLayouts        = BGFX_CONFIG_MAX_VERTEX_LAYOUTS;
 		g_caps.limits.maxVertexStreams        = 1;
+		g_caps.limits.maxVertexAttributes     = 16;
 		g_caps.limits.maxIndexBuffers         = BGFX_CONFIG_MAX_INDEX_BUFFERS;
 		g_caps.limits.maxVertexBuffers        = BGFX_CONFIG_MAX_VERTEX_BUFFERS;
 		g_caps.limits.maxDynamicIndexBuffers  = BGFX_CONFIG_MAX_DYNAMIC_INDEX_BUFFERS;
@@ -4515,6 +4544,11 @@ namespace bgfx
 
 	void Encoder::setImage(uint8_t _stage, TextureHandle _handle, uint8_t _mip, Access::Enum _access, TextureFormat::Enum _format)
 	{
+		setImage(_stage, _handle, 0, UINT16_MAX, _mip, _access, _format);
+	}
+
+	void Encoder::setImage(uint8_t _stage, TextureHandle _handle, uint16_t _firstLayer, uint16_t _numLayers, uint8_t _mip, Access::Enum _access, TextureFormat::Enum _format)
+	{
 		BX_ASSERT(_stage < g_caps.limits.maxComputeBindings, "Invalid stage %d (max %d).", _stage, g_caps.limits.maxComputeBindings);
 		BGFX_CHECK_HANDLE_INVALID_OK("setImage/TextureHandle", s_ctx->m_textureHandle, _handle);
 		_format = TextureFormat::Count == _format
@@ -4536,7 +4570,7 @@ namespace bgfx
 			BX_UNUSED(ref);
 		}
 
-		BGFX_ENCODER(setImage(_stage, _handle, _mip, _access, _format) );
+		BGFX_ENCODER(setImage(_stage, _handle, _firstLayer, _numLayers, _mip, _access, _format) );
 	}
 
 	void Encoder::dispatch(ViewId _id, ProgramHandle _program, uint32_t _numX, uint32_t _numY, uint32_t _numZ, uint8_t _flags)
@@ -5829,6 +5863,32 @@ namespace bgfx
 		return s_ctx->readTexture(_handle, _data, _layer, _mip);
 	}
 
+	void clear(TextureHandle _handle, uint8_t _mip, uint8_t _numMips, uint16_t _layer, uint16_t _numLayers)
+	{
+		BGFX_CHECK_HANDLE("clearTexture", s_ctx->m_textureHandle, _handle);
+
+		const TextureRef& ref = s_ctx->m_textureRef[_handle.idx];
+
+		BX_ASSERT(!ref.isDepth()
+			, "Texture (handle %d, '%S') has a depth/stencil format and can't be cleared; use a view depth clear instead."
+			, _handle.idx
+			, &ref.m_name
+			);
+		BX_ASSERT(!bimg::isCompressed(bimg::TextureFormat::Enum(ref.m_format) )
+			, "Texture (handle %d, '%S', %s) is compressed and can't be cleared."
+			, _handle.idx
+			, &ref.m_name
+			, bimg::getName(bimg::TextureFormat::Enum(ref.m_format) )
+			);
+		BX_ASSERT( (ref.m_flags & BGFX_TEXTURE_RT_MSAA_MASK) <= BGFX_TEXTURE_RT
+			, "Texture (handle %d, '%S') is multisampled and can't be cleared; use a view clear instead."
+			, _handle.idx
+			, &ref.m_name
+			);
+
+		s_ctx->clearTexture(_handle, _mip, _numMips, _layer, _numLayers);
+	}
+
 	FrameBufferHandle createFrameBuffer(uint16_t _width, uint16_t _height, TextureFormat::Enum _format, uint64_t _textureFlags)
 	{
 		_textureFlags |= _textureFlags&BGFX_TEXTURE_RT_MSAA_MASK ? 0 : BGFX_TEXTURE_RT;
@@ -6362,6 +6422,12 @@ namespace bgfx
 	{
 		BGFX_CHECK_ENCODER0();
 		s_ctx->m_encoder0->setImage(_stage, _handle, _mip, _access, _format);
+	}
+
+	void setImage(uint8_t _stage, TextureHandle _handle, uint16_t _firstLayer, uint16_t _numLayers, uint8_t _mip, Access::Enum _access, TextureFormat::Enum _format)
+	{
+		BGFX_CHECK_ENCODER0();
+		s_ctx->m_encoder0->setImage(_stage, _handle, _firstLayer, _numLayers, _mip, _access, _format);
 	}
 
 	void dispatch(ViewId _id, ProgramHandle _handle, uint32_t _numX, uint32_t _numY, uint32_t _numZ, uint8_t _flags)

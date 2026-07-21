@@ -643,6 +643,23 @@ namespace bgfx
 		release( (const Memory*)_mem);
 	}
 
+	static constexpr uint32_t kTextureZeroInitBudget = 64<<10;
+
+	inline constexpr uint32_t textureZeroInitTileDim(uint32_t _bpp, uint32_t _budget = kTextureZeroInitBudget)
+	{
+		uint32_t dim = 512;
+
+		while (dim > 1
+		&&     uint64_t(dim)*dim*_bpp/8 > _budget)
+		{
+			dim >>= 1;
+		}
+
+		return dim;
+	}
+
+	static_assert(BGFX_STENCIL_NONE == BGFX_STENCIL_FUNC_RMASK_MASK, "");
+
 	inline constexpr uint64_t packStencil(uint32_t _fstencil, uint32_t _bstencil)
 	{
 		return (uint64_t(_bstencil)<<32)|uint64_t(_fstencil);
@@ -653,11 +670,30 @@ namespace bgfx
 		return uint32_t( (_stencil >> (32*_0or1) ) );
 	}
 
-	static constexpr uint64_t kStencilNoRefMask = packStencil(~BGFX_STENCIL_FUNC_REF_MASK, ~BGFX_STENCIL_FUNC_REF_MASK);
-	static constexpr uint64_t kStencilDisabled  = packStencil(
+	inline constexpr uint8_t unpackStencilWriteMask(uint64_t _stencil)
+	{
+		return uint8_t( (unpackStencil(1, _stencil) & BGFX_STENCIL_FUNC_RMASK_MASK) >> BGFX_STENCIL_FUNC_RMASK_SHIFT);
+	}
+
+	inline constexpr bool stencilFrontAndBack(uint64_t _stencil)
+	{
+		const uint32_t fstencil = unpackStencil(0, _stencil) & ~BGFX_STENCIL_FUNC_RMASK_MASK;
+		const uint32_t bstencil = unpackStencil(1, _stencil) & ~BGFX_STENCIL_FUNC_RMASK_MASK;
+		return bstencil != (BGFX_STENCIL_NONE & ~BGFX_STENCIL_FUNC_RMASK_MASK)
+			&& bstencil != fstencil;
+	}
+
+	static constexpr uint64_t kStencilNoRefMask      = packStencil(~BGFX_STENCIL_FUNC_REF_MASK, ~BGFX_STENCIL_FUNC_REF_MASK);
+	static constexpr uint64_t kStencilNoRefAndRwMask = packStencil(~(BGFX_STENCIL_FUNC_REF_MASK|BGFX_STENCIL_FUNC_RMASK_MASK), ~(BGFX_STENCIL_FUNC_REF_MASK|BGFX_STENCIL_FUNC_RMASK_MASK));
+	static constexpr uint64_t kStencilDisabled       = packStencil(
 		  BGFX_STENCIL_TEST_ALWAYS | BGFX_STENCIL_OP_FAIL_S_KEEP | BGFX_STENCIL_OP_FAIL_Z_KEEP | BGFX_STENCIL_OP_PASS_Z_KEEP
 		, BGFX_STENCIL_TEST_ALWAYS | BGFX_STENCIL_OP_FAIL_S_KEEP | BGFX_STENCIL_OP_FAIL_Z_KEEP | BGFX_STENCIL_OP_PASS_Z_KEEP
 		);
+
+	inline constexpr bool stencilEnabled(uint64_t _stencil)
+	{
+		return 0 != (_stencil & kStencilNoRefAndRwMask);
+	}
 
 	inline constexpr bool needBorderColor(uint64_t _flags)
 	{
@@ -1036,6 +1072,7 @@ namespace bgfx
 			CreateProgram,
 			CreateTexture,
 			UpdateTexture,
+			ClearTexture,
 			ResizeTexture,
 			CreateFrameBuffer,
 			CreateUniform,
@@ -1979,15 +2016,20 @@ namespace bgfx
 
 		void setImage(TextureHandle _handle, uint8_t _mip, Access::Enum _access, TextureFormat::Enum _format)
 		{
+			setImage(_handle, 0, UINT16_MAX, _mip, _access, _format);
+		}
+
+		void setImage(TextureHandle _handle, uint16_t _firstLayer, uint16_t _numLayers, uint8_t _mip, Access::Enum _access, TextureFormat::Enum _format)
+		{
 			m_samplerFlags = BGFX_SAMPLER_NONE;
-			m_firstLayer   = 0;
-			m_numLayers    = UINT16_MAX;
-			m_idx      = _handle.idx;
-			m_type     = uint8_t(Binding::Image);
-			m_format   = uint8_t(_format);
-			m_access   = uint8_t(_access);
-			m_firstMip = _mip;
-			m_numMips  = 1;
+			m_firstLayer = _firstLayer;
+			m_numLayers  = _numLayers;
+			m_idx        = _handle.idx;
+			m_type       = uint8_t(Binding::Image);
+			m_format     = uint8_t(_format);
+			m_access     = uint8_t(_access);
+			m_firstMip   = _mip;
+			m_numMips    = 1;
 		}
 
 		uint32_t m_samplerFlags;
@@ -2045,7 +2087,7 @@ namespace bgfx
 				m_uniformIdx    = UINT8_MAX;
 
 				m_stateFlags    = BGFX_STATE_DEFAULT;
-				m_stencil       = packStencil(BGFX_STENCIL_DEFAULT, BGFX_STENCIL_DEFAULT);
+				m_stencil       = packStencil(BGFX_STENCIL_NONE, BGFX_STENCIL_NONE);
 				m_rgba          = 0;
 				m_scissor       = UINT16_MAX;
 			}
@@ -3472,6 +3514,13 @@ namespace bgfx
 			bind.setImage(_handle, _mip, _access, _format);
 		}
 
+		void setImage(uint8_t _stage, TextureHandle _handle, uint16_t _firstLayer, uint16_t _numLayers, uint8_t _mip, Access::Enum _access, TextureFormat::Enum _format)
+		{
+			m_bindDirty = true;
+			Binding& bind = m_bind.m_bind[_stage];
+			bind.setImage(_handle, _firstLayer, _numLayers, _mip, _access, _format);
+		}
+
 		void discard(uint8_t _flags)
 		{
 			if (BX_ENABLED(BGFX_CONFIG_DEBUG_UNIFORM) )
@@ -4153,6 +4202,7 @@ namespace bgfx
 		virtual void destroyProgram(ProgramHandle _handle) = 0;
 		virtual void* createTexture(TextureHandle _handle, const Memory* _mem, uint64_t _flags, uint8_t _skip, uint64_t _external) = 0;
 		virtual void updateTexture(TextureHandle _handle, uint8_t _side, uint8_t _mip, const Rect& _rect, uint16_t _z, uint16_t _depth, uint16_t _pitch, const Memory* _mem) = 0;
+		virtual void clearTexture(TextureHandle _handle, uint8_t _mip, uint8_t _numMips, uint16_t _layer, uint16_t _numLayers) = 0;
 		virtual void readTexture(TextureHandle _handle, void* _data, uint16_t _layer, uint8_t _mip) = 0;
 		virtual void resizeTexture(TextureHandle _handle, uint16_t _width, uint16_t _height, uint8_t _numMips, uint16_t _numLayers) = 0;
 		virtual void overrideInternal(TextureHandle _handle, uintptr_t _ptr, uint16_t _layerIndex) = 0;
@@ -5845,6 +5895,18 @@ namespace bgfx
 			cmdbuf.write(_depth);
 			cmdbuf.write(_pitch);
 			cmdbuf.write(_mem);
+		}
+
+		BGFX_API_FUNC(void clearTexture(TextureHandle _handle, uint8_t _mip, uint8_t _numMips, uint16_t _layer, uint16_t _numLayers) )
+		{
+			BGFX_MUTEX_SCOPE(m_resourceApiLock);
+
+			CommandBuffer& cmdbuf = getCommandBuffer(CommandBuffer::ClearTexture);
+			cmdbuf.write(_handle);
+			cmdbuf.write(_mip);
+			cmdbuf.write(_numMips);
+			cmdbuf.write(_layer);
+			cmdbuf.write(_numLayers);
 		}
 
 		BGFX_API_FUNC(FrameBufferHandle createFrameBuffer(uint8_t _num, const Attachment* _attachment, bool _destroyTextures) )

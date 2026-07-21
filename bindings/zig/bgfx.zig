@@ -176,9 +176,12 @@ pub const StencilFlags_FuncRefShift: StencilFlags           = 0;
 pub const StencilFlags_FuncRefMask: StencilFlags            = 0x000000ff;
 pub const StencilFlags_FuncRmaskShift: StencilFlags         = 8;
 pub const StencilFlags_FuncRmaskMask: StencilFlags          = 0x0000ff00;
-pub const StencilFlags_None: StencilFlags                   = 0x00000000;
+
+/// No stencil test.
+pub const StencilFlags_None: StencilFlags                   = 0x0000ff00;
+
+/// Stencil front or back mask.
 pub const StencilFlags_Mask: StencilFlags                   = 0xffffffff;
-pub const StencilFlags_Default: StencilFlags                = 0x00000000;
 
 /// Enable stencil test, less.
 pub const StencilFlags_TestLess: StencilFlags               = 0x00010000;
@@ -1030,6 +1033,30 @@ pub const Attrib = enum(c_int) {
     /// a_texcoord7
     TexCoord7,
 
+    /// a_texcoord8
+    TexCoord8,
+
+    /// a_texcoord9
+    TexCoord9,
+
+    /// a_texcoord10
+    TexCoord10,
+
+    /// a_texcoord11
+    TexCoord11,
+
+    /// a_texcoord12
+    TexCoord12,
+
+    /// a_texcoord13
+    TexCoord13,
+
+    /// a_texcoord14
+    TexCoord14,
+
+    /// a_texcoord15
+    TexCoord15,
+
     Count
 };
 
@@ -1054,6 +1081,12 @@ pub const AttribType = enum(c_int) {
 
     /// Float
     Float,
+
+    /// Int32
+    Int32,
+
+    /// Uint32
+    Uint32,
 
     Count
 };
@@ -1585,6 +1618,8 @@ pub const Caps = extern struct {
         maxComputeBindings: u32,
         maxVertexLayouts: u32,
         maxVertexStreams: u32,
+        maxVertexAttributes: u32,
+        maxInstanceData: u32,
         maxIndexBuffers: u32,
         maxVertexBuffers: u32,
         maxDynamicIndexBuffers: u32,
@@ -1821,8 +1856,8 @@ pub const Init = extern struct {
     pub const VertexLayout = extern struct {
         hash: u32,
         stride: u16,
-        offset: [18]u16,
-        attributes: [18]u16,
+        offset: [26]u16,
+        attributes: [26]u16,
         /// Start VertexLayout.
         /// <param name="_rendererType">Renderer backend type. See: `bgfx::RendererType`</param>
         pub inline fn begin(self: *VertexLayout, _rendererType: RendererType) *VertexLayout {
@@ -2184,6 +2219,18 @@ pub const Init = extern struct {
         /// <param name="_format">Texture format. See: `TextureFormat::Enum`.</param>
         pub inline fn setImage(self: ?*Encoder, _stage: u8, _handle: TextureHandle, _mip: u8, _access: Access, _format: TextureFormat) void {
             return bgfx_encoder_set_image(self, _stage, _handle, _mip, _access, _format);
+        }
+        /// Set compute image stage for draw primitive, selecting a sub-range of the
+        /// texture's array layers and mip levels.
+        /// <param name="_stage">Compute stage.</param>
+        /// <param name="_handle">Texture handle.</param>
+        /// <param name="_firstLayer">First array layer.</param>
+        /// <param name="_numLayers">Number of array layers.</param>
+        /// <param name="_mip">Mip level.</param>
+        /// <param name="_access">Image access. See `Access::Enum`.</param>
+        /// <param name="_format">Texture format. See: `TextureFormat::Enum`.</param>
+        pub inline fn setImageView(self: ?*Encoder, _stage: u8, _handle: TextureHandle, _firstLayer: u16, _numLayers: u16, _mip: u8, _access: Access, _format: TextureFormat) void {
+            return bgfx_encoder_set_image_view(self, _stage, _handle, _firstLayer, _numLayers, _mip, _access, _format);
         }
         /// Dispatch compute.
         /// <param name="_id">View id.</param>
@@ -3013,6 +3060,18 @@ pub inline fn updateTextureCube(_handle: TextureHandle, _layer: u16, _side: u8, 
 }
 extern fn bgfx_update_texture_cube(_handle: TextureHandle, _layer: u16, _side: u8, _mip: u8, _x: u16, _y: u16, _width: u16, _height: u16, _mem: [*c]const Memory, _pitch: u16) void;
 
+/// Clear a texture subresource range to zero.
+/// 
+/// <param name="_handle">Texture handle.</param>
+/// <param name="_mip">First mip level.</param>
+/// <param name="_numMips">Number of mip levels.</param>
+/// <param name="_layer">First array layer (or 3D depth slice base).</param>
+/// <param name="_numLayers">Number of layers.</param>
+pub inline fn clearTexture(_handle: TextureHandle, _mip: u8, _numMips: u8, _layer: u16, _numLayers: u16) void {
+    return bgfx_clear_texture(_handle, _mip, _numMips, _layer, _numLayers);
+}
+extern fn bgfx_clear_texture(_handle: TextureHandle, _mip: u8, _numMips: u8, _layer: u16, _numLayers: u16) void;
+
 /// Read back texture content.
 /// 
 /// @attention Texture must be created with `BGFX_TEXTURE_READ_BACK` flag.
@@ -3778,6 +3837,17 @@ extern fn bgfx_encoder_set_compute_indirect_buffer(self: ?*Encoder, _stage: u8, 
 /// <param name="_format">Texture format. See: `TextureFormat::Enum`.</param>
 extern fn bgfx_encoder_set_image(self: ?*Encoder, _stage: u8, _handle: TextureHandle, _mip: u8, _access: Access, _format: TextureFormat) void;
 
+/// Set compute image stage for draw primitive, selecting a sub-range of the
+/// texture's array layers and mip levels.
+/// <param name="_stage">Compute stage.</param>
+/// <param name="_handle">Texture handle.</param>
+/// <param name="_firstLayer">First array layer.</param>
+/// <param name="_numLayers">Number of array layers.</param>
+/// <param name="_mip">Mip level.</param>
+/// <param name="_access">Image access. See `Access::Enum`.</param>
+/// <param name="_format">Texture format. See: `TextureFormat::Enum`.</param>
+extern fn bgfx_encoder_set_image_view(self: ?*Encoder, _stage: u8, _handle: TextureHandle, _firstLayer: u16, _numLayers: u16, _mip: u8, _access: Access, _format: TextureFormat) void;
+
 /// Dispatch compute.
 /// <param name="_id">View id.</param>
 /// <param name="_program">Compute program.</param>
@@ -4333,6 +4403,20 @@ pub inline fn setImage(_stage: u8, _handle: TextureHandle, _mip: u8, _access: Ac
     return bgfx_set_image(_stage, _handle, _mip, _access, _format);
 }
 extern fn bgfx_set_image(_stage: u8, _handle: TextureHandle, _mip: u8, _access: Access, _format: TextureFormat) void;
+
+/// Set compute image stage for draw primitive, selecting a sub-range of the
+/// texture's array layers and mip levels.
+/// <param name="_stage">Compute stage.</param>
+/// <param name="_handle">Texture handle.</param>
+/// <param name="_firstLayer">First array layer.</param>
+/// <param name="_numLayers">Number of array layers.</param>
+/// <param name="_mip">Mip level.</param>
+/// <param name="_access">Image access. See `Access::Enum`.</param>
+/// <param name="_format">Texture format. See: `TextureFormat::Enum`.</param>
+pub inline fn setImageView(_stage: u8, _handle: TextureHandle, _firstLayer: u16, _numLayers: u16, _mip: u8, _access: Access, _format: TextureFormat) void {
+    return bgfx_set_image_view(_stage, _handle, _firstLayer, _numLayers, _mip, _access, _format);
+}
+extern fn bgfx_set_image_view(_stage: u8, _handle: TextureHandle, _firstLayer: u16, _numLayers: u16, _mip: u8, _access: Access, _format: TextureFormat) void;
 
 /// Dispatch compute.
 /// <param name="_id">View id.</param>
