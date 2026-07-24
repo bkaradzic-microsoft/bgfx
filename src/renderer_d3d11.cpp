@@ -4862,7 +4862,22 @@ namespace bgfx { namespace d3d11
 						desc.MipLevels = 1;
 						DX_CHECK(s_renderD3D11->m_device->CreateTexture2D(&desc, NULL, &m_rt2d) );
 
-						desc.BindFlags &= ~(D3D11_BIND_RENDER_TARGET|D3D11_BIND_DEPTH_STENCIL);
+						// The multisampled surface (m_rt2d) is what gets rendered into; m_texture2d is the
+						// single-sample resolve target that shaders actually sample. It normally drops the
+						// render-target/depth-stencil binds. However, when the resolve target carries a mip
+						// chain to be auto-generated (D3D11_RESOURCE_MISC_GENERATE_MIPS), the post-resolve
+						// ID3D11DeviceContext::GenerateMips call (see TextureD3D11::resolve) REQUIRES the
+						// resource to also have D3D11_BIND_RENDER_TARGET; without it GenerateMips silently
+						// no-ops, leaving mips 1..N empty. That broke roughness-based refraction blur for
+						// MSAA render targets that request mipmaps (e.g. the OpenPBR glTF transmission
+						// opaque texture). Keep RENDER_TARGET on the resolve target in that case so the
+						// mip chain is generated; only strip DEPTH_STENCIL.
+						const bool autoGenMips = 0 != (desc.MiscFlags & D3D11_RESOURCE_MISC_GENERATE_MIPS);
+						desc.BindFlags &= ~D3D11_BIND_DEPTH_STENCIL;
+						if (!autoGenMips)
+						{
+							desc.BindFlags &= ~D3D11_BIND_RENDER_TARGET;
+						}
 						desc.SampleDesc = s_msaa[0];
 						desc.MipLevels  = savedMipLevels;
 					}
