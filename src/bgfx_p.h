@@ -313,7 +313,7 @@ namespace bgfx
 	typedef uint32_t RenderItemCount;
 #endif // BGFX_CONFIG_MAX_DRAW_CALLS < (64<<10)
 
-	static constexpr uint32_t kDrawCallBlock = 1024;
+	static constexpr uint32_t kDrawCallBlock = BGFX_CONFIG_DRAW_CALL_BLOCK;
 
 	inline uint32_t alignDrawCalls(uint32_t _num)
 	{
