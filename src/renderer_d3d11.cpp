@@ -208,8 +208,11 @@ namespace bgfx { namespace d3d11
 		{ DXGI_FORMAT_BC2_UNORM,          DXGI_FORMAT_BC2_UNORM,             DXGI_FORMAT_UNKNOWN,           DXGI_FORMAT_BC2_UNORM_SRGB       }, // BC2
 		{ DXGI_FORMAT_BC3_UNORM,          DXGI_FORMAT_BC3_UNORM,             DXGI_FORMAT_UNKNOWN,           DXGI_FORMAT_BC3_UNORM_SRGB       }, // BC3
 		{ DXGI_FORMAT_BC4_UNORM,          DXGI_FORMAT_BC4_UNORM,             DXGI_FORMAT_UNKNOWN,           DXGI_FORMAT_UNKNOWN              }, // BC4
+		{ DXGI_FORMAT_BC4_SNORM,          DXGI_FORMAT_BC4_SNORM,             DXGI_FORMAT_UNKNOWN,           DXGI_FORMAT_UNKNOWN              }, // BC4S
 		{ DXGI_FORMAT_BC5_UNORM,          DXGI_FORMAT_BC5_UNORM,             DXGI_FORMAT_UNKNOWN,           DXGI_FORMAT_UNKNOWN              }, // BC5
+		{ DXGI_FORMAT_BC5_SNORM,          DXGI_FORMAT_BC5_SNORM,             DXGI_FORMAT_UNKNOWN,           DXGI_FORMAT_UNKNOWN              }, // BC5S
 		{ DXGI_FORMAT_BC6H_SF16,          DXGI_FORMAT_BC6H_SF16,             DXGI_FORMAT_UNKNOWN,           DXGI_FORMAT_UNKNOWN              }, // BC6H
+		{ DXGI_FORMAT_BC6H_UF16,          DXGI_FORMAT_BC6H_UF16,             DXGI_FORMAT_UNKNOWN,           DXGI_FORMAT_UNKNOWN              }, // BC6HU
 		{ DXGI_FORMAT_BC7_UNORM,          DXGI_FORMAT_BC7_UNORM,             DXGI_FORMAT_UNKNOWN,           DXGI_FORMAT_BC7_UNORM_SRGB       }, // BC7
 		{ DXGI_FORMAT_UNKNOWN,            DXGI_FORMAT_UNKNOWN,               DXGI_FORMAT_UNKNOWN,           DXGI_FORMAT_UNKNOWN              }, // ETC1
 		{ DXGI_FORMAT_UNKNOWN,            DXGI_FORMAT_UNKNOWN,               DXGI_FORMAT_UNKNOWN,           DXGI_FORMAT_UNKNOWN              }, // ETC2
@@ -294,6 +297,7 @@ namespace bgfx { namespace d3d11
 		{ DXGI_FORMAT_B5G5R5A1_UNORM,     DXGI_FORMAT_B5G5R5A1_UNORM,        DXGI_FORMAT_UNKNOWN,           DXGI_FORMAT_UNKNOWN              }, // BGR5A1
 		{ DXGI_FORMAT_B5G5R5A1_UNORM,     DXGI_FORMAT_B5G5R5A1_UNORM,        DXGI_FORMAT_UNKNOWN,           DXGI_FORMAT_UNKNOWN              }, // RGB5A1
 		{ DXGI_FORMAT_R10G10B10A2_UNORM,  DXGI_FORMAT_R10G10B10A2_UNORM,     DXGI_FORMAT_UNKNOWN,           DXGI_FORMAT_UNKNOWN              }, // RGB10A2
+		{ DXGI_FORMAT_R10G10B10A2_UINT,   DXGI_FORMAT_R10G10B10A2_UINT,      DXGI_FORMAT_UNKNOWN,           DXGI_FORMAT_UNKNOWN              }, // RGB10A2U
 		{ DXGI_FORMAT_R11G11B10_FLOAT,    DXGI_FORMAT_R11G11B10_FLOAT,       DXGI_FORMAT_UNKNOWN,           DXGI_FORMAT_UNKNOWN              }, // RG11B10F
 		{ DXGI_FORMAT_UNKNOWN,            DXGI_FORMAT_UNKNOWN,               DXGI_FORMAT_UNKNOWN,           DXGI_FORMAT_UNKNOWN              }, // UnknownDepth
 		{ DXGI_FORMAT_R16_TYPELESS,       DXGI_FORMAT_R16_UNORM,             DXGI_FORMAT_D16_UNORM,         DXGI_FORMAT_UNKNOWN              }, // D16
@@ -303,6 +307,7 @@ namespace bgfx { namespace d3d11
 		{ DXGI_FORMAT_R32_TYPELESS,       DXGI_FORMAT_R32_FLOAT,             DXGI_FORMAT_D32_FLOAT,         DXGI_FORMAT_UNKNOWN              }, // D16F
 		{ DXGI_FORMAT_R32_TYPELESS,       DXGI_FORMAT_R32_FLOAT,             DXGI_FORMAT_D32_FLOAT,         DXGI_FORMAT_UNKNOWN              }, // D24F
 		{ DXGI_FORMAT_R32_TYPELESS,       DXGI_FORMAT_R32_FLOAT,             DXGI_FORMAT_D32_FLOAT,         DXGI_FORMAT_UNKNOWN              }, // D32F
+		{ DXGI_FORMAT_R32G8X24_TYPELESS,  DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS, DXGI_FORMAT_D32_FLOAT_S8X24_UINT, DXGI_FORMAT_UNKNOWN        }, // D32FS8
 		{ DXGI_FORMAT_R24G8_TYPELESS,     DXGI_FORMAT_R24_UNORM_X8_TYPELESS, DXGI_FORMAT_D24_UNORM_S8_UINT, DXGI_FORMAT_UNKNOWN              }, // D0S8
 	};
 	static_assert(TextureFormat::Count == BX_COUNTOF(s_textureFormat) );
@@ -477,6 +482,32 @@ namespace bgfx { namespace d3d11
 		IID_ID3D11Device1,
 	};
 
+	static const char* s_messageCategory[] =
+	{
+		"APPLICATION_DEFINED",
+		"MISCELLANEOUS",
+		"INITIALIZATION",
+		"CLEANUP",
+		"COMPILATION",
+		"STATE_CREATION",
+		"STATE_SETTING",
+		"STATE_GETTING",
+		"RESOURCE_MANIPULATION",
+		"EXECUTION",
+		"SHADER",
+	};
+	static_assert(BX_COUNTOF(s_messageCategory) == D3D11_MESSAGE_CATEGORY_SHADER+1);
+
+	static const char* s_messageSeverity[] =
+	{
+		"CORRUPTION",
+		"ERROR",
+		"WARNING",
+		"INFO",
+		"MESSAGE",
+	};
+	static_assert(BX_COUNTOF(s_messageSeverity) == D3D11_MESSAGE_SEVERITY_MESSAGE+1);
+
 	inline bool isLost(HRESULT _hr)
 	{
 		return false
@@ -529,6 +560,7 @@ namespace bgfx { namespace d3d11
 			va_end(argList);
 			temp[size] = '\0';
 
+			_interface->SetPrivateData(WKPDID_D3DDebugObjectName, 0, NULL); // destroy first...
 			_interface->SetPrivateData(WKPDID_D3DDebugObjectName, size, temp);
 		}
 	}
@@ -1810,6 +1842,7 @@ namespace bgfx { namespace d3d11
 			}
 
 			DX_RELEASE(m_annotation, 1);
+			dumpInfoQueue();
 			DX_RELEASE_W(m_infoQueue, 0);
 			DX_RELEASE(m_msaaRt, 0);
 
@@ -3746,6 +3779,47 @@ namespace bgfx { namespace d3d11
 			}
 		}
 
+		void dumpInfoQueue()
+		{
+			if (NULL == m_infoQueue)
+			{
+				return;
+			}
+
+			const uint64_t num = m_infoQueue->GetNumStoredMessages();
+
+			if (0 == num)
+			{
+				return;
+			}
+
+			uint8_t buffer[4<<10];
+			D3D11_MESSAGE* msg = (D3D11_MESSAGE*)buffer;
+
+			for (uint64_t ii = 0; ii < num; ++ii)
+			{
+				SIZE_T size = sizeof(buffer);
+
+				if (FAILED(m_infoQueue->GetMessage(ii, msg, &size) ) )
+				{
+					BX_TRACE("D3D11 message %d is too large (%d bytes) to dump.", uint32_t(ii), uint32_t(size) );
+					continue;
+				}
+
+				if (D3D11_MESSAGE_SEVERITY_WARNING >= msg->Severity)
+				{
+					BX_TRACE("D3D11 %s %s #%d: %s"
+						, s_messageSeverity[bx::min<uint32_t>(msg->Severity, BX_COUNTOF(s_messageSeverity)-1)]
+						, s_messageCategory[bx::min<uint32_t>(msg->Category, BX_COUNTOF(s_messageCategory)-1)]
+						, msg->ID
+						, msg->pDescription
+						);
+				}
+			}
+
+			m_infoQueue->ClearStoredMessages();
+		}
+
 		void* m_d3d9Dll;
 		void* m_d3d11Dll;
 		void* m_renderDocDll;
@@ -4625,8 +4699,8 @@ namespace bgfx { namespace d3d11
 
 			const bool compressed = bimg::isCompressed(bimg::TextureFormat::Enum(m_textureFormat) );
 			const bool isVideoDecodeDst = 0 != (m_flags & BGFX_TEXTURE_INTERNAL_VIDEO_DECODE_DST);
-			const bool swizzle    = TextureFormat::BGRA8 == m_textureFormat
-				&& (0 != (m_flags&BGFX_TEXTURE_COMPUTE_WRITE) || isVideoDecodeDst)
+			const bool swizzle = TextureFormat::BGRA8 == m_textureFormat
+				&& ( (0 != (m_flags&BGFX_TEXTURE_COMPUTE_WRITE) && 0 == (g_caps.formats[TextureFormat::BGRA8] & BGFX_CAPS_FORMAT_TEXTURE_IMAGE_WRITE) ) || isVideoDecodeDst)
 				;
 
 			BX_TRACE("Texture %3d: %s (requested: %s), layers %d, %dx%d%s%s%s."
@@ -4862,16 +4936,6 @@ namespace bgfx { namespace d3d11
 						desc.MipLevels = 1;
 						DX_CHECK(s_renderD3D11->m_device->CreateTexture2D(&desc, NULL, &m_rt2d) );
 
-						// The multisampled surface (m_rt2d) is what gets rendered into; m_texture2d is the
-						// single-sample resolve target that shaders actually sample. It normally drops the
-						// render-target/depth-stencil binds. However, when the resolve target carries a mip
-						// chain to be auto-generated (D3D11_RESOURCE_MISC_GENERATE_MIPS), the post-resolve
-						// ID3D11DeviceContext::GenerateMips call (see TextureD3D11::resolve) REQUIRES the
-						// resource to also have D3D11_BIND_RENDER_TARGET; without it GenerateMips silently
-						// no-ops, leaving mips 1..N empty. That broke roughness-based refraction blur for
-						// MSAA render targets that request mipmaps (e.g. the OpenPBR glTF transmission
-						// opaque texture). Keep RENDER_TARGET on the resolve target in that case so the
-						// mip chain is generated; only strip DEPTH_STENCIL.
 						const bool autoGenMips = 0 != (desc.MiscFlags & D3D11_RESOURCE_MISC_GENERATE_MIPS);
 						desc.BindFlags &= ~D3D11_BIND_DEPTH_STENCIL;
 						if (!autoGenMips)
@@ -4962,7 +5026,41 @@ namespace bgfx { namespace d3d11
 
 			if (computeWrite)
 			{
-				DX_CHECK(s_renderD3D11->m_device->CreateUnorderedAccessView(m_ptr, NULL, &m_uav) );
+				D3D11_UNORDERED_ACCESS_VIEW_DESC uavd;
+				uavd.Format = getSrvFormat();
+				switch (m_type)
+				{
+				case TextureCube:
+					uavd.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2DARRAY;
+					uavd.Texture2DArray.MipSlice        = 0;
+					uavd.Texture2DArray.FirstArraySlice = 0;
+					uavd.Texture2DArray.ArraySize       = 6 * bx::max<uint32_t>(m_numLayers, 1);
+					break;
+
+				case Texture3D:
+					uavd.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE3D;
+					uavd.Texture3D.MipSlice    = 0;
+					uavd.Texture3D.FirstWSlice = 0;
+					uavd.Texture3D.WSize       = UINT32_MAX;
+					break;
+
+				default:
+					if (1 < m_numLayers)
+					{
+						uavd.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2DARRAY;
+						uavd.Texture2DArray.MipSlice        = 0;
+						uavd.Texture2DArray.FirstArraySlice = 0;
+						uavd.Texture2DArray.ArraySize       = m_numLayers;
+					}
+					else
+					{
+						uavd.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D;
+						uavd.Texture2D.MipSlice = 0;
+					}
+					break;
+				}
+
+				DX_CHECK(s_renderD3D11->m_device->CreateUnorderedAccessView(m_ptr, &uavd, &m_uav) );
 			}
 
 			if (isVideoDecodeDst)
@@ -5167,6 +5265,30 @@ namespace bgfx { namespace d3d11
 			}
 		}
 
+		if (NULL == temp)
+		{
+			const uint32_t numRows = bimg::isCompressed(bimg::TextureFormat::Enum(m_textureFormat) )
+				? bx::max<uint32_t>(1, (box.bottom - box.top + blockInfo.blockHeight - 1) / blockInfo.blockHeight)
+				: (box.bottom - box.top)
+				;
+			const uint32_t numSlices = TextureD3D11::Texture3D == m_type ? (box.back - box.front) : 1;
+			const uint32_t needed    = (numSlices - 1) * slicePitch + (numRows - 1) * copyPitch + rectPitch;
+
+			if (_mem->size < needed)
+			{
+				BX_TRACE("TextureD3D11::update: short source memory (%d bytes, need %d) for %dx%dx%d mip %d of %s texture; skipping."
+					, _mem->size
+					, needed
+					, _rect.m_width
+					, _rect.m_height
+					, _depth
+					, _mip
+					, bimg::getName(bimg::TextureFormat::Enum(m_textureFormat) )
+					);
+				return;
+			}
+		}
+
 		deviceCtx->UpdateSubresource(
 			  m_ptr
 			, subres
@@ -5267,6 +5389,17 @@ namespace bgfx { namespace d3d11
 		if (bimg::isDepth(bimg::TextureFormat::Enum(m_textureFormat) ) )
 		{
 			return s_textureFormat[m_textureFormat].m_fmtSrv;
+		}
+
+		if (TextureFormat::BGRA8 == m_textureFormat
+		&&  ( (0 != (m_flags&BGFX_TEXTURE_COMPUTE_WRITE) && 0 == (g_caps.formats[TextureFormat::BGRA8] & BGFX_CAPS_FORMAT_TEXTURE_IMAGE_WRITE) )
+			|| 0 != (m_flags&BGFX_TEXTURE_INTERNAL_VIDEO_DECODE_DST) )
+			)
+		{
+			return 0 != (m_flags&BGFX_TEXTURE_SRGB)
+				? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB
+				: DXGI_FORMAT_R8G8B8A8_UNORM
+				;
 		}
 
 		return 0 != (m_flags&BGFX_TEXTURE_SRGB)
@@ -5416,8 +5549,8 @@ namespace bgfx { namespace d3d11
 							{
 								D3D11_TEXTURE2D_DESC desc;
 								texture.m_texture2d->GetDesc(&desc);
-								m_width  = desc.Width;
-								m_height = desc.Height;
+								m_width  = bx::max<uint32_t>(1, desc.Width  >> at.mip);
+								m_height = bx::max<uint32_t>(1, desc.Height >> at.mip);
 							}
 							break;
 
@@ -5425,8 +5558,8 @@ namespace bgfx { namespace d3d11
 							{
 								D3D11_TEXTURE3D_DESC desc;
 								texture.m_texture3d->GetDesc(&desc);
-								m_width  = desc.Width;
-								m_height = desc.Height;
+								m_width  = bx::max<uint32_t>(1, desc.Width  >> at.mip);
+								m_height = bx::max<uint32_t>(1, desc.Height >> at.mip);
 							}
 							break;
 						}
@@ -6110,10 +6243,11 @@ namespace bgfx { namespace d3d11
 					}
 
 					viewState.m_rect = _render->m_view[view].m_rect;
+					const Rect& clippedRect = _render->m_view[view].m_clippedRect;
 
 					const Rect& scissorRect = _render->m_view[view].m_scissor;
 					viewHasScissor = !scissorRect.isZero();
-					viewScissorRect = viewHasScissor ? scissorRect : viewState.m_rect;
+					viewScissorRect = viewHasScissor ? scissorRect : clippedRect;
 
 					D3D11_VIEWPORT vp;
 					vp.TopLeftX = viewState.m_rect.m_x;
@@ -6127,7 +6261,7 @@ namespace bgfx { namespace d3d11
 
 					if (BGFX_CLEAR_NONE != (clr.m_flags & BGFX_CLEAR_MASK) )
 					{
-						clearQuad(_clearQuad, viewState.m_rect, clr, _render->m_colorPalette);
+						clearQuad(_clearQuad, clippedRect, clr, _render->m_colorPalette);
 						prim = s_primInfo[Topology::Count]; // Force primitive type update after clear quad.
 					}
 
@@ -7094,6 +7228,8 @@ namespace bgfx { namespace d3d11
 			deviceCtx->ResolveSubresource(backBufferColor, 0, m_msaaRt, 0, m_scd.format);
 			DX_RELEASE(backBufferColor, 0);
 		}
+
+		dumpInfoQueue();
 	}
 } /* namespace d3d11 */ } // namespace bgfx
 

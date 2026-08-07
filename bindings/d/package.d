@@ -9,7 +9,7 @@ import bindbc.common.types: c_int64, c_uint64, va_list;
 import bindbc.bgfx.config;
 static import bgfx.impl;
 
-enum uint apiVersion = 151;
+enum uint apiVersion = 153;
 
 alias ViewID = ushort;
 
@@ -756,8 +756,11 @@ enum TextureFormat: bgfx.impl.TextureFormat.Enum{
 	bc2 = bgfx.impl.TextureFormat.Enum.bc2,
 	bc3 = bgfx.impl.TextureFormat.Enum.bc3,
 	bc4 = bgfx.impl.TextureFormat.Enum.bc4,
+	bc4s = bgfx.impl.TextureFormat.Enum.bc4s,
 	bc5 = bgfx.impl.TextureFormat.Enum.bc5,
+	bc5s = bgfx.impl.TextureFormat.Enum.bc5s,
 	bc6h = bgfx.impl.TextureFormat.Enum.bc6h,
+	bc6hu = bgfx.impl.TextureFormat.Enum.bc6hu,
 	bc7 = bgfx.impl.TextureFormat.Enum.bc7,
 	etc1 = bgfx.impl.TextureFormat.Enum.etc1,
 	etc2 = bgfx.impl.TextureFormat.Enum.etc2,
@@ -842,6 +845,7 @@ enum TextureFormat: bgfx.impl.TextureFormat.Enum{
 	bgr5a1 = bgfx.impl.TextureFormat.Enum.bgr5a1,
 	rgb5a1 = bgfx.impl.TextureFormat.Enum.rgb5a1,
 	rgb10a2 = bgfx.impl.TextureFormat.Enum.rgb10a2,
+	rgb10a2u = bgfx.impl.TextureFormat.Enum.rgb10a2u,
 	rg11b10f = bgfx.impl.TextureFormat.Enum.rg11b10f,
 	unknownDepth = bgfx.impl.TextureFormat.Enum.unknownDepth,
 	d16 = bgfx.impl.TextureFormat.Enum.d16,
@@ -851,6 +855,7 @@ enum TextureFormat: bgfx.impl.TextureFormat.Enum{
 	d16f = bgfx.impl.TextureFormat.Enum.d16f,
 	d24f = bgfx.impl.TextureFormat.Enum.d24f,
 	d32f = bgfx.impl.TextureFormat.Enum.d32f,
+	d32fs8 = bgfx.impl.TextureFormat.Enum.d32fs8,
 	d0s8 = bgfx.impl.TextureFormat.Enum.d0s8,
 	count = bgfx.impl.TextureFormat.Enum.count,
 }
@@ -3347,23 +3352,27 @@ mixin(joinFnBinds((){
 		* Set view rectangle. Draw primitive outside view will be clipped.
 		Params:
 			id = View id.
-			x = Position x from the left corner of the window.
-			y = Position y from the top corner of the window.
+			x = Position x from the left corner of the window. Can be
+		negative to place view origin outside of the window.
+			y = Position y from the top corner of the window. Can be
+		negative to place view origin outside of the window.
 			width = Width of view port region.
 			height = Height of view port region.
 		*/
-		{q{void}, q{setViewRect}, q{ViewID id, ushort x, ushort y, ushort width, ushort height}, ext: `C++, "bgfx"`},
+		{q{void}, q{setViewRect}, q{ViewID id, short x, short y, ushort width, ushort height}, ext: `C++, "bgfx"`},
 		
 		/**
 		* Set view rectangle. Draw primitive outside view will be clipped.
 		Params:
 			id = View id.
-			x = Position x from the left corner of the window.
-			y = Position y from the top corner of the window.
+			x = Position x from the left corner of the window. Can be
+		negative to place view origin outside of the window.
+			y = Position y from the top corner of the window. Can be
+		negative to place view origin outside of the window.
 			ratio = Width and height will be set in respect to back-buffer size.
 		See: `BackbufferRatio::Enum`.
 		*/
-		{q{void}, q{setViewRect}, q{ViewID id, ushort x, ushort y, bgfx.impl.BackbufferRatio.Enum ratio}, ext: `C++, "bgfx"`},
+		{q{void}, q{setViewRect}, q{ViewID id, short x, short y, bgfx.impl.BackbufferRatio.Enum ratio}, ext: `C++, "bgfx"`},
 		
 		/**
 		* Set view scissor. Draw primitive outside view will be clipped. When

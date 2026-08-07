@@ -1716,7 +1716,8 @@ namespace bgfx
 				}
 			}
 
-			view.m_rect.intersect(rect);
+			view.m_clippedRect = view.m_rect;
+			view.m_clippedRect.intersect(rect);
 
 			if (!view.m_scissor.isZero() )
 			{
@@ -4648,9 +4649,18 @@ namespace bgfx
 		dstHeight = bx::min<uint32_t>(dstHeight, _dstY + _height) - _dstY;
 		dstDepth  = bx::min<uint32_t>(dstDepth,  _dstZ + _depth ) - _dstZ;
 
-		const uint16_t width  = uint16_t(bx::min(srcWidth,  dstWidth ) );
-		const uint16_t height = uint16_t(bx::min(srcHeight, dstHeight) );
+		uint16_t width  = uint16_t(bx::min(srcWidth,  dstWidth ) );
+		uint16_t height = uint16_t(bx::min(srcHeight, dstHeight) );
 		const uint16_t depth  = uint16_t(bx::min(srcDepth,  dstDepth ) );
+
+		if (bimg::isCompressed(bimg::TextureFormat::Enum(src.m_format) ) )
+		{
+			const bimg::ImageBlockInfo& bi = bimg::getBlockInfo(bimg::TextureFormat::Enum(src.m_format) );
+			const uint32_t blockW = bx::max<uint32_t>(1, bi.blockWidth);
+			const uint32_t blockH = bx::max<uint32_t>(1, bi.blockHeight);
+			width  = uint16_t( (uint32_t(width  + blockW - 1) / blockW) * blockW);
+			height = uint16_t( (uint32_t(height + blockH - 1) / blockH) * blockH);
+		}
 
 		BGFX_ENCODER(blit(_id, _dst, _dstMip, _dstX, _dstY, _dstZ, _src, _srcMip, _srcX, _srcY, _srcZ, width, height, depth) );
 	}
@@ -6072,13 +6082,13 @@ namespace bgfx
 		s_ctx->setViewName(_id, bx::StringView(_name, _len) );
 	}
 
-	void setViewRect(ViewId _id, uint16_t _x, uint16_t _y, uint16_t _width, uint16_t _height)
+	void setViewRect(ViewId _id, int16_t _x, int16_t _y, uint16_t _width, uint16_t _height)
 	{
 		BX_ASSERT(checkView(_id), "Invalid view id: %d", _id);
 		s_ctx->setViewRect(_id, _x, _y, _width, _height);
 	}
 
-	void setViewRect(ViewId _id, uint16_t _x, uint16_t _y, BackbufferRatio::Enum _ratio)
+	void setViewRect(ViewId _id, int16_t _x, int16_t _y, BackbufferRatio::Enum _ratio)
 	{
 		BX_ASSERT(checkView(_id), "Invalid view id: %d", _id);
 
@@ -6495,8 +6505,11 @@ BGFX_TEXTURE_FORMAT_BIMG(BC1);
 BGFX_TEXTURE_FORMAT_BIMG(BC2);
 BGFX_TEXTURE_FORMAT_BIMG(BC3);
 BGFX_TEXTURE_FORMAT_BIMG(BC4);
+BGFX_TEXTURE_FORMAT_BIMG(BC4S);
 BGFX_TEXTURE_FORMAT_BIMG(BC5);
+BGFX_TEXTURE_FORMAT_BIMG(BC5S);
 BGFX_TEXTURE_FORMAT_BIMG(BC6H);
+BGFX_TEXTURE_FORMAT_BIMG(BC6HU);
 BGFX_TEXTURE_FORMAT_BIMG(BC7);
 BGFX_TEXTURE_FORMAT_BIMG(ETC1);
 BGFX_TEXTURE_FORMAT_BIMG(ETC2);
@@ -6577,6 +6590,7 @@ BGFX_TEXTURE_FORMAT_BIMG(RGBA4);
 BGFX_TEXTURE_FORMAT_BIMG(BGR5A1);
 BGFX_TEXTURE_FORMAT_BIMG(RGB5A1);
 BGFX_TEXTURE_FORMAT_BIMG(RGB10A2);
+BGFX_TEXTURE_FORMAT_BIMG(RGB10A2U);
 BGFX_TEXTURE_FORMAT_BIMG(RG11B10F);
 BGFX_TEXTURE_FORMAT_BIMG(UnknownDepth);
 BGFX_TEXTURE_FORMAT_BIMG(D16);
@@ -6586,6 +6600,7 @@ BGFX_TEXTURE_FORMAT_BIMG(D32);
 BGFX_TEXTURE_FORMAT_BIMG(D16F);
 BGFX_TEXTURE_FORMAT_BIMG(D24F);
 BGFX_TEXTURE_FORMAT_BIMG(D32F);
+BGFX_TEXTURE_FORMAT_BIMG(D32FS8);
 BGFX_TEXTURE_FORMAT_BIMG(D0S8);
 BGFX_TEXTURE_FORMAT_BIMG(Count);
 

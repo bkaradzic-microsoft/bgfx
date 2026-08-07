@@ -189,8 +189,11 @@ VK_IMPORT_DEVICE
 		{ VK_FORMAT_BC2_UNORM_BLOCK,           VK_FORMAT_BC2_UNORM_BLOCK,          VK_FORMAT_UNDEFINED,           VK_FORMAT_BC2_SRGB_BLOCK,           { $_, $_, $_, $_ } }, // BC2
 		{ VK_FORMAT_BC3_UNORM_BLOCK,           VK_FORMAT_BC3_UNORM_BLOCK,          VK_FORMAT_UNDEFINED,           VK_FORMAT_BC3_SRGB_BLOCK,           { $_, $_, $_, $_ } }, // BC3
 		{ VK_FORMAT_BC4_UNORM_BLOCK,           VK_FORMAT_BC4_UNORM_BLOCK,          VK_FORMAT_UNDEFINED,           VK_FORMAT_UNDEFINED,                { $_, $_, $_, $_ } }, // BC4
+		{ VK_FORMAT_BC4_SNORM_BLOCK,           VK_FORMAT_BC4_SNORM_BLOCK,          VK_FORMAT_UNDEFINED,           VK_FORMAT_UNDEFINED,                { $_, $_, $_, $_ } }, // BC4S
 		{ VK_FORMAT_BC5_UNORM_BLOCK,           VK_FORMAT_BC5_UNORM_BLOCK,          VK_FORMAT_UNDEFINED,           VK_FORMAT_UNDEFINED,                { $_, $_, $_, $_ } }, // BC5
+		{ VK_FORMAT_BC5_SNORM_BLOCK,           VK_FORMAT_BC5_SNORM_BLOCK,          VK_FORMAT_UNDEFINED,           VK_FORMAT_UNDEFINED,                { $_, $_, $_, $_ } }, // BC5S
 		{ VK_FORMAT_BC6H_SFLOAT_BLOCK,         VK_FORMAT_BC6H_SFLOAT_BLOCK,        VK_FORMAT_UNDEFINED,           VK_FORMAT_UNDEFINED,                { $_, $_, $_, $_ } }, // BC6H
+		{ VK_FORMAT_BC6H_UFLOAT_BLOCK,         VK_FORMAT_BC6H_UFLOAT_BLOCK,        VK_FORMAT_UNDEFINED,           VK_FORMAT_UNDEFINED,                { $_, $_, $_, $_ } }, // BC6HU
 		{ VK_FORMAT_BC7_UNORM_BLOCK,           VK_FORMAT_BC7_UNORM_BLOCK,          VK_FORMAT_UNDEFINED,           VK_FORMAT_BC7_SRGB_BLOCK,           { $_, $_, $_, $_ } }, // BC7
 		{ VK_FORMAT_UNDEFINED,                 VK_FORMAT_UNDEFINED,                VK_FORMAT_UNDEFINED,           VK_FORMAT_UNDEFINED,                { $_, $_, $_, $_ } }, // ETC1
 		{ VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK,   VK_FORMAT_UNDEFINED,                VK_FORMAT_UNDEFINED,           VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK,   { $_, $_, $_, $_ } }, // ETC2
@@ -275,6 +278,7 @@ VK_IMPORT_DEVICE
 		{ VK_FORMAT_A1R5G5B5_UNORM_PACK16,     VK_FORMAT_A1R5G5B5_UNORM_PACK16,    VK_FORMAT_UNDEFINED,           VK_FORMAT_UNDEFINED,                { $_, $_, $_, $_ } }, // BGR5A1
 		{ VK_FORMAT_A1R5G5B5_UNORM_PACK16,     VK_FORMAT_A1R5G5B5_UNORM_PACK16,    VK_FORMAT_UNDEFINED,           VK_FORMAT_UNDEFINED,                { $B, $G, $R, $A } }, // RGB5A1
 		{ VK_FORMAT_A2B10G10R10_UNORM_PACK32,  VK_FORMAT_A2B10G10R10_UNORM_PACK32, VK_FORMAT_UNDEFINED,           VK_FORMAT_UNDEFINED,                { $_, $_, $_, $_ } }, // RGB10A2
+		{ VK_FORMAT_A2B10G10R10_UINT_PACK32,   VK_FORMAT_A2B10G10R10_UINT_PACK32,  VK_FORMAT_UNDEFINED,           VK_FORMAT_UNDEFINED,                { $_, $_, $_, $_ } }, // RGB10A2U
 		{ VK_FORMAT_B10G11R11_UFLOAT_PACK32,   VK_FORMAT_B10G11R11_UFLOAT_PACK32,  VK_FORMAT_UNDEFINED,           VK_FORMAT_UNDEFINED,                { $_, $_, $_, $_ } }, // RG11B10F
 		{ VK_FORMAT_UNDEFINED,                 VK_FORMAT_UNDEFINED,                VK_FORMAT_UNDEFINED,           VK_FORMAT_UNDEFINED,                { $_, $_, $_, $_ } }, // UnknownDepth
 		{ VK_FORMAT_UNDEFINED,                 VK_FORMAT_R16_UNORM,                VK_FORMAT_D16_UNORM,           VK_FORMAT_UNDEFINED,                { $_, $_, $_, $_ } }, // D16
@@ -284,6 +288,7 @@ VK_IMPORT_DEVICE
 		{ VK_FORMAT_UNDEFINED,                 VK_FORMAT_R32_SFLOAT,               VK_FORMAT_D32_SFLOAT,          VK_FORMAT_UNDEFINED,                { $_, $_, $_, $_ } }, // D16F
 		{ VK_FORMAT_UNDEFINED,                 VK_FORMAT_R32_SFLOAT,               VK_FORMAT_D32_SFLOAT,          VK_FORMAT_UNDEFINED,                { $_, $_, $_, $_ } }, // D24F
 		{ VK_FORMAT_UNDEFINED,                 VK_FORMAT_R32_SFLOAT,               VK_FORMAT_D32_SFLOAT,          VK_FORMAT_UNDEFINED,                { $_, $_, $_, $_ } }, // D32F
+		{ VK_FORMAT_UNDEFINED,                 VK_FORMAT_R32_SFLOAT,               VK_FORMAT_D32_SFLOAT_S8_UINT,  VK_FORMAT_UNDEFINED,                { $_, $_, $_, $_ } }, // D32FS8
 		{ VK_FORMAT_UNDEFINED,                 VK_FORMAT_R8_UINT,                  VK_FORMAT_S8_UINT,             VK_FORMAT_UNDEFINED,                { $_, $_, $_, $_ } }, // D0S8
 #undef $_
 #undef $0
@@ -1756,27 +1761,79 @@ VK_IMPORT_INSTANCE
 					}
 				}
 
-				bx::memSet(&m_deviceFeatures, 0, sizeof(m_deviceFeatures) );
-
-				m_deviceFeatures.fullDrawIndexUint32               = supportedFeatures.fullDrawIndexUint32;
-				m_deviceFeatures.imageCubeArray                    = supportedFeatures.imageCubeArray            && (_init.capabilities & BGFX_CAPS_TEXTURE_CUBE_ARRAY);
-				m_deviceFeatures.independentBlend                  = supportedFeatures.independentBlend          && (_init.capabilities & BGFX_CAPS_BLEND_INDEPENDENT);
-				m_deviceFeatures.multiDrawIndirect                 = supportedFeatures.multiDrawIndirect         && (_init.capabilities & BGFX_CAPS_DRAW_INDIRECT);
-				m_deviceFeatures.drawIndirectFirstInstance         = supportedFeatures.drawIndirectFirstInstance && (_init.capabilities & BGFX_CAPS_DRAW_INDIRECT);
-				m_deviceFeatures.depthClamp                        = supportedFeatures.depthClamp;
-				m_deviceFeatures.fillModeNonSolid                  = supportedFeatures.fillModeNonSolid;
-				m_deviceFeatures.largePoints                       = supportedFeatures.largePoints;
-				m_deviceFeatures.samplerAnisotropy                 = supportedFeatures.samplerAnisotropy;
-				m_deviceFeatures.textureCompressionETC2            = supportedFeatures.textureCompressionETC2;
-				m_deviceFeatures.textureCompressionBC              = supportedFeatures.textureCompressionBC;
-				m_deviceFeatures.vertexPipelineStoresAndAtomics    = supportedFeatures.vertexPipelineStoresAndAtomics;
-				m_deviceFeatures.fragmentStoresAndAtomics          = supportedFeatures.fragmentStoresAndAtomics;
-				m_deviceFeatures.shaderImageGatherExtended         = supportedFeatures.shaderImageGatherExtended;
-				m_deviceFeatures.shaderStorageImageExtendedFormats = supportedFeatures.shaderStorageImageExtendedFormats;
-				m_deviceFeatures.shaderClipDistance                = supportedFeatures.shaderClipDistance;
-				m_deviceFeatures.shaderCullDistance                = supportedFeatures.shaderCullDistance;
-				m_deviceFeatures.shaderResourceMinLod              = supportedFeatures.shaderResourceMinLod;
-				m_deviceFeatures.geometryShader                    = supportedFeatures.geometryShader;
+				m_deviceFeatures =
+				{
+					.robustBufferAccess                      = true
+						&& supportedFeatures.robustBufferAccess
+						&& BX_ENABLED(BGFX_CONFIG_RENDERER_VULKAN_ROBUST_BUFFER_ACCESS)
+						,
+					.fullDrawIndexUint32                     = supportedFeatures.fullDrawIndexUint32,
+					.imageCubeArray                          = true
+						&& supportedFeatures.imageCubeArray
+						&& (_init.capabilities & BGFX_CAPS_TEXTURE_CUBE_ARRAY)
+						,
+					.independentBlend                        = true
+						&& supportedFeatures.independentBlend
+						&& (_init.capabilities & BGFX_CAPS_BLEND_INDEPENDENT)
+						,
+					.geometryShader                          = supportedFeatures.geometryShader,
+					.tessellationShader                      = VK_FALSE,
+					.sampleRateShading                       = VK_FALSE,
+					.dualSrcBlend                            = VK_FALSE,
+					.logicOp                                 = VK_FALSE,
+					.multiDrawIndirect                       = true
+						&& supportedFeatures.multiDrawIndirect
+						&& (_init.capabilities & BGFX_CAPS_DRAW_INDIRECT)
+						,
+					.drawIndirectFirstInstance               = true
+						&& supportedFeatures.drawIndirectFirstInstance
+						&& (_init.capabilities & BGFX_CAPS_DRAW_INDIRECT)
+						,
+					.depthClamp                              = supportedFeatures.depthClamp,
+					.depthBiasClamp                          = VK_FALSE,
+					.fillModeNonSolid                        = supportedFeatures.fillModeNonSolid,
+					.depthBounds                             = VK_FALSE,
+					.wideLines                               = VK_FALSE,
+					.largePoints                             = supportedFeatures.largePoints,
+					.alphaToOne                              = VK_FALSE,
+					.multiViewport                           = VK_FALSE,
+					.samplerAnisotropy                       = supportedFeatures.samplerAnisotropy,
+					.textureCompressionETC2                  = supportedFeatures.textureCompressionETC2,
+					.textureCompressionASTC_LDR              = VK_FALSE,
+					.textureCompressionBC                    = supportedFeatures.textureCompressionBC,
+					.occlusionQueryPrecise                   = VK_FALSE,
+					.pipelineStatisticsQuery                 = VK_FALSE,
+					.vertexPipelineStoresAndAtomics          = supportedFeatures.vertexPipelineStoresAndAtomics,
+					.fragmentStoresAndAtomics                = supportedFeatures.fragmentStoresAndAtomics,
+					.shaderTessellationAndGeometryPointSize  = VK_FALSE,
+					.shaderImageGatherExtended               = supportedFeatures.shaderImageGatherExtended,
+					.shaderStorageImageExtendedFormats       = supportedFeatures.shaderStorageImageExtendedFormats,
+					.shaderStorageImageMultisample           = VK_FALSE,
+					.shaderStorageImageReadWithoutFormat     = VK_FALSE,
+					.shaderStorageImageWriteWithoutFormat    = VK_FALSE,
+					.shaderUniformBufferArrayDynamicIndexing = VK_FALSE,
+					.shaderSampledImageArrayDynamicIndexing  = VK_FALSE,
+					.shaderStorageBufferArrayDynamicIndexing = VK_FALSE,
+					.shaderStorageImageArrayDynamicIndexing  = VK_FALSE,
+					.shaderClipDistance                      = supportedFeatures.shaderClipDistance,
+					.shaderCullDistance                      = supportedFeatures.shaderCullDistance,
+					.shaderFloat64                           = VK_FALSE,
+					.shaderInt64                             = VK_FALSE,
+					.shaderInt16                             = VK_FALSE,
+					.shaderResourceResidency                 = VK_FALSE,
+					.shaderResourceMinLod                    = supportedFeatures.shaderResourceMinLod,
+					.sparseBinding                           = VK_FALSE,
+					.sparseResidencyBuffer                   = VK_FALSE,
+					.sparseResidencyImage2D                  = VK_FALSE,
+					.sparseResidencyImage3D                  = VK_FALSE,
+					.sparseResidency2Samples                 = VK_FALSE,
+					.sparseResidency4Samples                 = VK_FALSE,
+					.sparseResidency8Samples                 = VK_FALSE,
+					.sparseResidency16Samples                = VK_FALSE,
+					.sparseResidencyAliased                  = VK_FALSE,
+					.variableMultisampleRate                 = VK_FALSE,
+					.inheritedQueries                        = VK_FALSE,
+				};
 
 				m_lineAASupport = true
 					&& s_extension[Extension::EXT_line_rasterization].m_supported
@@ -4619,11 +4676,13 @@ VK_IMPORT_DEVICE
 
 		void clearQuad(const Rect& _rect, const Clear& _clear, const float _palette[][4])
 		{
+			const Rect clearRect = _rect;
+
 			VkClearRect rect[1];
-			rect[0].rect.offset.x      = _rect.m_x;
-			rect[0].rect.offset.y      = _rect.m_y;
-			rect[0].rect.extent.width  = _rect.m_width;
-			rect[0].rect.extent.height = _rect.m_height;
+			rect[0].rect.offset.x      = clearRect.m_x;
+			rect[0].rect.offset.y      = clearRect.m_y;
+			rect[0].rect.extent.width  = clearRect.m_width;
+			rect[0].rect.extent.height = clearRect.m_height;
 			rect[0].baseArrayLayer = 0;
 			rect[0].layerCount     = 1;
 
@@ -6556,7 +6615,6 @@ VK_DESTROY
 		if (m_sampler.Count > 1)
 		{
 			BX_ASSERT(VK_IMAGE_VIEW_TYPE_3D != m_type, "Can't create multisample 3D image.");
-			BX_ASSERT(m_numMips <= 1, "Can't create multisample image with mip chain.");
 		}
 
 		VkImageCreateInfo ici;
@@ -6613,6 +6671,10 @@ VK_DESTROY
 			? 1
 			: ici.mipLevels
 			;
+
+		BX_ASSERT(1 == m_sampler.Count || ici.mipLevels <= 1
+			, "Can't create multisample image with mip chain."
+			);
 
 		if (0 != _external)
 		{
@@ -7245,6 +7307,84 @@ VK_DESTROY
 				, 1
 				, &resolve
 				);
+
+			const bool autoGenMips = true
+				&& 0 != (_resolve & BGFX_RESOLVE_AUTO_GEN_MIPS)
+				&& 0 == (m_flags  & BGFX_TEXTURE_RT_WRITE_ONLY)
+				&& (_mip + 1) < m_numMips
+				;
+
+			if (autoGenMips)
+			{
+				BGFX_PROFILER_SCOPE("Resolve - Generate Mipmaps (MSAA)", kColorResource);
+
+				int32_t mipWidth  = bx::max<int32_t>(int32_t(m_width)  >> _mip, 1);
+				int32_t mipHeight = bx::max<int32_t>(int32_t(m_height) >> _mip, 1);
+
+				const VkFilter filter = bimg::isDepth(bimg::TextureFormat::Enum(m_textureFormat) )
+					? VK_FILTER_NEAREST
+					: VK_FILTER_LINEAR
+					;
+
+				VkImageBlit blit;
+				blit.srcOffsets[0] = { 0, 0, 0 };
+				blit.srcSubresource.aspectMask     = m_aspectFlags;
+				blit.srcSubresource.baseArrayLayer = _layer;
+				blit.srcSubresource.layerCount     = numLayers;
+				blit.dstOffsets[0] = { 0, 0, 0 };
+				blit.dstSubresource.aspectMask     = m_aspectFlags;
+				blit.dstSubresource.baseArrayLayer = _layer;
+				blit.dstSubresource.layerCount     = numLayers;
+
+				for (uint32_t i = _mip + 1; i < m_numMips; i++)
+				{
+					BGFX_PROFILER_SCOPE("Mipmap", kColorResource);
+
+					blit.srcOffsets[1] = { mipWidth, mipHeight, 1 };
+					blit.srcSubresource.mipLevel = i - 1;
+
+					mipWidth  = bx::max(mipWidth  >> 1, 1);
+					mipHeight = bx::max(mipHeight >> 1, 1);
+
+					blit.dstOffsets[1] = { mipWidth, mipHeight, 1 };
+					blit.dstSubresource.mipLevel = i;
+
+					setImageMemoryBarrier(
+						  _commandBuffer
+						, m_singleMsaaImage
+						, m_aspectFlags
+						, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+						, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+						, blit.srcSubresource.mipLevel
+						, 1
+						, _layer
+						, numLayers
+						);
+
+					vkCmdBlitImage(
+						  _commandBuffer
+						, m_singleMsaaImage
+						, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+						, m_singleMsaaImage
+						, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+						, 1
+						, &blit
+						, filter
+						);
+				}
+
+				setImageMemoryBarrier(
+					  _commandBuffer
+					, m_singleMsaaImage
+					, m_aspectFlags
+					, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+					, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+					, _mip
+					, m_numMips - _mip - 1
+					, _layer
+					, numLayers
+					);
+			}
 		}
 
 		if (needMipGen)
@@ -7856,15 +7996,20 @@ VK_DESTROY
 						typedef xcb_connection_t* (*PFN_XGETXCBCONNECTION)(Display*);
 						PFN_XGETXCBCONNECTION XGetXCBConnection = (PFN_XGETXCBCONNECTION)bx::dlsym(xcbdll, "XGetXCBConnection");
 
-						VkXcbSurfaceCreateInfoKHR sci;
-						sci.sType      = VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR;
-						sci.pNext      = NULL;
-						sci.flags      = 0;
-						sci.connection = XGetXCBConnection( (Display*)g_platformData.ndt);
-						sci.window     = bx::narrowCast<xcb_window_t>(uintptr_t(m_nwh) );
-						result = vkCreateXcbSurfaceKHR(instance, &sci, allocatorCb, &m_surface);
-						BX_WARN(VK_SUCCESS == result, "vkCreateXcbSurfaceKHR failed %d: %s.", result, getName(result) );
-
+						if (NULL != XGetXCBConnection)
+						{
+							VkXcbSurfaceCreateInfoKHR sci;
+							sci.sType      = VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR;
+							sci.pNext      = NULL;
+							sci.flags      = 0;
+							sci.connection = XGetXCBConnection( (Display*)g_platformData.ndt);
+							if (NULL != sci.connection)
+							{
+								sci.window     = bx::narrowCast<xcb_window_t>(uintptr_t(m_nwh) );
+								result = vkCreateXcbSurfaceKHR(instance, &sci, allocatorCb, &m_surface);
+								BX_WARN(VK_SUCCESS == result, "vkCreateXcbSurfaceKHR failed %d: %s.", result, getName(result) );
+							}
+						}
 						bx::dlclose(xcbdll);
 					}
 				}
@@ -9633,32 +9778,19 @@ VK_DESTROY
 						VkRenderPass renderPass = fb.getRenderPass(_render->m_view[view].m_clear.m_flags);
 
 						viewState.m_rect = _render->m_view[view].m_rect;
-						Rect rect        = _render->m_view[view].m_rect;
+						const Rect& rect        = _render->m_view[view].m_rect;
+						const Rect& renderArea  = _render->m_view[view].m_clippedRect;
 						Rect scissorRect = _render->m_view[view].m_scissor;
 						viewHasScissor  = !scissorRect.isZero();
-						viewScissorRect = viewHasScissor ? scissorRect : rect;
+						viewScissorRect = viewHasScissor ? scissorRect : renderArea;
 						restoreScissor = false;
-
-						// Clamp the rect to what's valid according to Vulkan.
-						rect.m_width  = bx::min(rect.m_width,  bx::narrowCast<uint16_t>(fb.m_width)  - rect.m_x);
-						rect.m_height = bx::min(rect.m_height, bx::narrowCast<uint16_t>(fb.m_height) - rect.m_y);
-						if (_render->m_view[view].m_rect.m_width  != rect.m_width
-						||  _render->m_view[view].m_rect.m_height != rect.m_height)
-						{
-							BX_TRACE("Clamp render pass from %dx%d to %dx%d"
-								, _render->m_view[view].m_rect.m_width
-								, _render->m_view[view].m_rect.m_height
-								, rect.m_width
-								, rect.m_height
-								);
-						}
 
 						rpbi.framebuffer = fb.m_currentFramebuffer;
 						rpbi.renderPass  = renderPass;
-						rpbi.renderArea.offset.x = rect.m_x;
-						rpbi.renderArea.offset.y = rect.m_y;
-						rpbi.renderArea.extent.width  = rect.m_width;
-						rpbi.renderArea.extent.height = rect.m_height;
+						rpbi.renderArea.offset.x = renderArea.m_x;
+						rpbi.renderArea.offset.y = renderArea.m_y;
+						rpbi.renderArea.extent.width  = renderArea.m_width;
+						rpbi.renderArea.extent.height = renderArea.m_height;
 
 						VkViewport vp;
 						vp.x        =  float(rect.m_x);
@@ -9775,8 +9907,8 @@ VK_DESTROY
 							const Clear& clr = _render->m_view[view].m_clear;
 							if (BGFX_CLEAR_NONE != clr.m_flags)
 							{
-								Rect clearRect = rect;
-								clearRect.setIntersect(rect, viewScissorRect);
+								Rect clearRect;
+								clearRect.setIntersect(renderArea, viewScissorRect);
 								clearQuad(clearRect, clr, _render->m_colorPalette);
 
 							}

@@ -1104,11 +1104,20 @@ pub const TextureFormat = enum(c_int) {
     /// Block Compression 4. Single 8-bit red channel, unsigned normalized. 4 BPP.
     BC4,
 
+    /// Block Compression 4. Single 8-bit red channel, signed normalized. 4 BPP.
+    BC4S,
+
     /// Block Compression 5. Two 8-bit channels (RG), unsigned normalized. 8 BPP.
     BC5,
 
+    /// Block Compression 5. Two 8-bit channels (RG), signed normalized. 8 BPP.
+    BC5S,
+
     /// Block Compression 6H. Three 16-bit floating-point channels (RGB), HDR. 8 BPP.
     BC6H,
+
+    /// Block Compression 6H. Three 16-bit unsigned floating-point channels (RGB), HDR. 8 BPP.
+    BC6HU,
 
     /// RGB 4-7 bits per color channel, 0-8 bits alpha. Block Compression 7. High-quality RGBA, 4-7 bits per color, 0-8 bits alpha. 8 BPP.
     BC7,
@@ -1362,6 +1371,9 @@ pub const TextureFormat = enum(c_int) {
     /// Packed 32-bit, 10-bit red, 10-bit green, 10-bit blue, 2-bit alpha, unsigned normalized. 32 BPP.
     RGB10A2,
 
+    /// Packed 32-bit, 10-bit red, 10-bit green, 10-bit blue, 2-bit alpha, unsigned integer. 32 BPP.
+    RGB10A2U,
+
     /// Packed 32-bit, 11-bit red, 11-bit green, 10-bit blue, unsigned floating point. No alpha. 32 BPP.
     RG11B10F,
 
@@ -1388,6 +1400,9 @@ pub const TextureFormat = enum(c_int) {
 
     /// 32-bit depth, floating point. 32 BPP.
     D32F,
+
+    /// 32-bit depth, floating point, with 8-bit stencil (stored as 64-bit). 64 BPP.
+    D32FS8,
 
     /// 8-bit stencil only, no depth. 8 BPP.
     D0S8,
@@ -1642,7 +1657,7 @@ pub const Caps = extern struct {
         numGPUs: u8,
         gpu: [4]GPU,
         limits: Limits,
-        formats: [100]u32,
+        formats: [105]u32,
         codecs: [3]u32,
     };
 
@@ -3351,24 +3366,24 @@ extern fn bgfx_set_view_name(_id: ViewId, _name: [*c]const u8, _len: i32) void;
 
 /// Set view rectangle. Draw primitive outside view will be clipped.
 /// <param name="_id">View id.</param>
-/// <param name="_x">Position x from the left corner of the window.</param>
-/// <param name="_y">Position y from the top corner of the window.</param>
+/// <param name="_x">Position x from the left corner of the window. Can be negative to place view origin outside of the window.</param>
+/// <param name="_y">Position y from the top corner of the window. Can be negative to place view origin outside of the window.</param>
 /// <param name="_width">Width of view port region.</param>
 /// <param name="_height">Height of view port region.</param>
-pub inline fn setViewRect(_id: ViewId, _x: u16, _y: u16, _width: u16, _height: u16) void {
+pub inline fn setViewRect(_id: ViewId, _x: i16, _y: i16, _width: u16, _height: u16) void {
     return bgfx_set_view_rect(_id, _x, _y, _width, _height);
 }
-extern fn bgfx_set_view_rect(_id: ViewId, _x: u16, _y: u16, _width: u16, _height: u16) void;
+extern fn bgfx_set_view_rect(_id: ViewId, _x: i16, _y: i16, _width: u16, _height: u16) void;
 
 /// Set view rectangle. Draw primitive outside view will be clipped.
 /// <param name="_id">View id.</param>
-/// <param name="_x">Position x from the left corner of the window.</param>
-/// <param name="_y">Position y from the top corner of the window.</param>
+/// <param name="_x">Position x from the left corner of the window. Can be negative to place view origin outside of the window.</param>
+/// <param name="_y">Position y from the top corner of the window. Can be negative to place view origin outside of the window.</param>
 /// <param name="_ratio">Width and height will be set in respect to back-buffer size. See: `BackbufferRatio::Enum`.</param>
-pub inline fn setViewRectRatio(_id: ViewId, _x: u16, _y: u16, _ratio: BackbufferRatio) void {
+pub inline fn setViewRectRatio(_id: ViewId, _x: i16, _y: i16, _ratio: BackbufferRatio) void {
     return bgfx_set_view_rect_ratio(_id, _x, _y, _ratio);
 }
-extern fn bgfx_set_view_rect_ratio(_id: ViewId, _x: u16, _y: u16, _ratio: BackbufferRatio) void;
+extern fn bgfx_set_view_rect_ratio(_id: ViewId, _x: i16, _y: i16, _ratio: BackbufferRatio) void;
 
 /// Set view scissor. Draw primitive outside view will be clipped. When
 /// _x, _y, _width and _height are set to 0, scissor will be disabled.
