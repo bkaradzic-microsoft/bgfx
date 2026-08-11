@@ -85,10 +85,24 @@
 					? BGFX_CONFIG_RENDERER_OPENGL_MIN_VERSION : 0)
 #	endif // BGFX_CONFIG_RENDERER_OPENGL
 
+// Default to OpenGL ES 3.2 where it's broadly available, since ES 3.2 makes
+// copy_image (texture blit) core. Platforms that can't reach ES 3.2 keep their
+// historical floor:
+//   - Emscripten: WebGL 2.0 is OpenGL ES 3.0, and can't go higher.
+//   - iOS/NX/RPI: cap out below ES 3.2.
+// Any version can still be selected by defining BGFX_CONFIG_RENDERER_OPENGLES
+// explicitly.
 #	ifndef BGFX_CONFIG_RENDERER_OPENGLES_MIN_VERSION
-#		define BGFX_CONFIG_RENDERER_OPENGLES_MIN_VERSION (0 \
-					|| BX_PLATFORM_ANDROID                  \
-					? 30 : 1)
+#		if BX_PLATFORM_EMSCRIPTEN
+#			define BGFX_CONFIG_RENDERER_OPENGLES_MIN_VERSION 30
+#		elif BX_PLATFORM_ANDROID \
+			|| BX_PLATFORM_BSD   \
+			|| BX_PLATFORM_LINUX \
+			|| BX_PLATFORM_WINDOWS
+#			define BGFX_CONFIG_RENDERER_OPENGLES_MIN_VERSION 32
+#		else
+#			define BGFX_CONFIG_RENDERER_OPENGLES_MIN_VERSION 1
+#		endif //
 #	endif // BGFX_CONFIG_RENDERER_OPENGLES_MIN_VERSION
 
 #	ifndef BGFX_CONFIG_RENDERER_OPENGLES
