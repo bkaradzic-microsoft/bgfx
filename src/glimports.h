@@ -368,6 +368,7 @@ GL_IMPORT______(false, PFNGLGETSHADERIVPROC,                       glGetShaderiv
 GL_IMPORT______(false, PFNGLGETSHADERINFOLOGPROC,                  glGetShaderInfoLog);
 GL_IMPORT______(false, PFNGLGETSTRINGPROC,                         glGetString);
 GL_IMPORT______(false, PFNGLGETUNIFORMLOCATIONPROC,                glGetUniformLocation);
+GL_IMPORT______(false, PFNGLGETUNIFORMIVPROC,                      glGetUniformiv);
 
 GL_IMPORT______(true,  PFNGLGETSTRINGIPROC,                        glGetStringi);
 GL_IMPORT______(true,  PFNGLINVALIDATEFRAMEBUFFERPROC,             glInvalidateFramebuffer);

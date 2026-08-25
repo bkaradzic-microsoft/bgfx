@@ -798,6 +798,14 @@ typedef double GLdouble;
 #	define GL_COMPARE_REF_TO_TEXTURE 0x884E
 #endif // GL_COMPARE_REF_TO_TEXTURE
 
+#ifndef GL_TEXTURE_EXTERNAL_OES
+#	define GL_TEXTURE_EXTERNAL_OES 0x8D65
+#endif // GL_TEXTURE_EXTERNAL_OES
+
+#ifndef GL_SAMPLER_EXTERNAL_OES
+#	define GL_SAMPLER_EXTERNAL_OES 0x8D66
+#endif // GL_SAMPLER_EXTERNAL_OES
+
 #ifndef GL_INT_SAMPLER_2D
 #	define GL_INT_SAMPLER_2D 0x8DCA
 #endif // GL_INT_SAMPLER_2D
@@ -1471,7 +1479,7 @@ namespace bgfx { namespace gl
 		void update(uint8_t _side, uint8_t _mip, const Rect& _rect, uint16_t _z, uint16_t _depth, uint16_t _pitch, const Memory* _mem);
 		void clear(uint8_t _mip, uint8_t _numMips, uint16_t _layer, uint16_t _numLayers);
 		void setSamplerState(uint32_t _flags, const float _rgba[4]);
-		void commit(uint32_t _stage, uint32_t _flags, const float _palette[][4], uint8_t _firstMip, uint8_t _numMips, uint16_t _firstLayer, uint16_t _numLayers);
+		void commit(uint32_t _stage, uint32_t _flags, const float _palette[][4], uint8_t _firstMip, uint8_t _numMips, uint16_t _firstLayer, uint16_t _numLayers, GLenum _target = 0);
 		GLenum getViewTarget(uint16_t _numLayers, bool _layered = false) const;
 		GLuint getViewId(uint8_t _firstMip, uint8_t _numMips, uint16_t _firstLayer, uint16_t _numLayers, GLenum* _target = NULL, bool _layered = false);
 		void resolve(uint8_t _resolve) const;
@@ -1589,6 +1597,9 @@ namespace bgfx { namespace gl
 		void unbindInstanceData() const;
 		void unbindAttributes();
 
+		// Returns mask of texture stages sampled by `samplerExternalOES`.
+		uint32_t getSamplerExternalMask() const;
+
 		GLuint m_id;
 
 		uint8_t m_unboundUsedAttrib[Attrib::Count]; // For tracking unbound used attributes between begin()/end().
@@ -1601,6 +1612,9 @@ namespace bgfx { namespace gl
 
 		GLint m_sampler[BGFX_CONFIG_MAX_TEXTURE_SAMPLERS];
 		uint8_t m_numSamplers;
+
+		// Bit per m_sampler element, set when sampler is `samplerExternalOES`.
+		uint32_t m_samplerExternal;
 
 		UniformBuffer* m_constantBuffer;
 		PredefinedUniform m_predefined[PredefinedUniform::Count];

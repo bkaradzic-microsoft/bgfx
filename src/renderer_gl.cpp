@@ -779,6 +779,7 @@ namespace bgfx { namespace gl
 			OES_depth32,
 			OES_depth_texture,
 			OES_draw_buffers_indexed,
+			OES_EGL_image_external_essl3,
 			OES_element_index_uint,
 			OES_fragment_precision_high,
 			OES_fbo_render_mipmap,
@@ -1009,6 +1010,7 @@ namespace bgfx { namespace gl
 		{ "OES_depth32",                              false,                                    true  },
 		{ "OES_depth_texture",                        false,                                    true  },
 		{ "OES_draw_buffers_indexed",                 BGFX_CONFIG_RENDERER_OPENGLES >= 32,      false },
+		{ "OES_EGL_image_external_essl3",             false,                                    true  },
 		{ "OES_element_index_uint",                   false,                                    true  },
 		{ "OES_fragment_precision_high",              false,                                    true  },
 		{ "OES_fbo_render_mipmap",                    false,                                    true  },
@@ -5255,6 +5257,8 @@ namespace bgfx { namespace gl
 			GLSL_TYPE(GL_IMAGE_CUBE_MAP_ARRAY);
 			GLSL_TYPE(GL_INT_IMAGE_CUBE_MAP_ARRAY);
 			GLSL_TYPE(GL_UNSIGNED_INT_IMAGE_CUBE_MAP_ARRAY);
+
+			GLSL_TYPE(GL_SAMPLER_EXTERNAL_OES);
 		}
 
 #undef GLSL_TYPE
@@ -5364,6 +5368,8 @@ namespace bgfx { namespace gl
 		case GL_IMAGE_CUBE_MAP_ARRAY:
 		case GL_INT_IMAGE_CUBE_MAP_ARRAY:
 		case GL_UNSIGNED_INT_IMAGE_CUBE_MAP_ARRAY:
+
+		case GL_SAMPLER_EXTERNAL_OES:
 			return UniformType::Sampler;
 		};
 
@@ -5519,6 +5525,7 @@ namespace bgfx { namespace gl
 
 		m_numPredefined = 0;
 		m_numSamplers = 0;
+		m_samplerExternal = 0;
 
 		BX_TRACE("Uniforms (%d):", activeUniforms);
 		for (int32_t ii = 0; ii < activeUniforms; ++ii)
@@ -5629,10 +5636,18 @@ namespace bgfx { namespace gl
 			case GL_IMAGE_CUBE_MAP_ARRAY:
 			case GL_INT_IMAGE_CUBE_MAP_ARRAY:
 			case GL_UNSIGNED_INT_IMAGE_CUBE_MAP_ARRAY:
+
+			case GL_SAMPLER_EXTERNAL_OES:
 				if (m_numSamplers < BX_COUNTOF(m_sampler) )
 				{
 					BX_TRACE("Sampler #%d at location %d.", m_numSamplers, loc);
 					m_sampler[m_numSamplers] = loc;
+
+					if (GL_SAMPLER_EXTERNAL_OES == gltype)
+					{
+						m_samplerExternal |= UINT32_C(1)<<m_numSamplers;
+					}
+
 					m_numSamplers++;
 				}
 				else
@@ -5767,6 +5782,31 @@ namespace bgfx { namespace gl
 			, BX_COUNTOF(m_instanceData)
 			);
 		m_instanceData[used] = -1;
+	}
+
+	uint32_t ProgramGL::getSamplerExternalMask() const
+	{
+		// Sampler uniform is assigned texture stage by `bgfx::setTexture`, so
+		// mapping between sampler and stage is not known until uniforms are
+		// committed. Read it back from program, since it's the only place that
+		// holds it. Cost is paid only by programs that use `samplerExternalOES`.
+		uint32_t mask = 0;
+
+		for (uint32_t bits = m_samplerExternal; 0 != bits; bits &= bits-1)
+		{
+			const uint32_t idx = bx::countTrailingZeros(bits);
+
+			GLint stage = 0;
+			GL_CHECK(glGetUniformiv(m_id, m_sampler[idx], &stage) );
+
+			if (0 <= stage
+			&&  stage < int32_t(BGFX_CONFIG_MAX_TEXTURE_SAMPLERS) )
+			{
+				mask |= UINT32_C(1)<<stage;
+			}
+		}
+
+		return mask;
 	}
 
 	void ProgramGL::bindAttributesBegin()
@@ -6401,6 +6441,11 @@ namespace bgfx { namespace gl
 		destroy();
 		m_flags |= BGFX_SAMPLER_INTERNAL_SHARED;
 		m_id = (GLuint)_ptr;
+
+		// Sampler state is per texture object. Targets that don't go through
+		// sampler objects (GL_TEXTURE_EXTERNAL_OES) must re-apply it to the
+		// new texture, otherwise it keeps the GL defaults.
+		m_currentSamplerHash = UINT32_MAX;
 	}
 
 	void TextureGL::update(uint8_t _side, uint8_t _mip, const Rect& _rect, uint16_t _z, uint16_t _depth, uint16_t _pitch, const Memory* _mem)
@@ -6582,6 +6627,25 @@ namespace bgfx { namespace gl
 
 		if (hash != m_currentSamplerHash)
 		{
+			if (GL_TEXTURE_EXTERNAL_OES == m_target)
+			{
+				// GL_OES_EGL_image_external_essl3 allows only GL_CLAMP_TO_EDGE wrap
+				// mode, and non-mipmap min filter. Everything else generates
+				// GL_INVALID_ENUM.
+				GLenum magFilter;
+				GLenum minFilter;
+				getFilters(flags, false, magFilter, minFilter);
+
+				GL_CHECK(glTexParameteri(m_target, GL_TEXTURE_WRAP_S,     GL_CLAMP_TO_EDGE) );
+				GL_CHECK(glTexParameteri(m_target, GL_TEXTURE_WRAP_T,     GL_CLAMP_TO_EDGE) );
+				GL_CHECK(glTexParameteri(m_target, GL_TEXTURE_MAG_FILTER, magFilter) );
+				GL_CHECK(glTexParameteri(m_target, GL_TEXTURE_MIN_FILTER, minFilter) );
+
+				m_currentSamplerHash = hash;
+
+				return;
+			}
+
 			const GLenum  target     = m_target == GL_TEXTURE_2D_MULTISAMPLE ? GL_TEXTURE_2D : m_target;
 			const GLenum  targetMsaa = m_target;
 			const uint8_t numMips    = m_numMips;
@@ -6746,8 +6810,28 @@ namespace bgfx { namespace gl
 		return viewId;
 	}
 
-	void TextureGL::commit(uint32_t _stage, uint32_t _flags, const float _palette[][4], uint8_t _firstMip, uint8_t _numMips, uint16_t _firstLayer, uint16_t _numLayers)
+	void TextureGL::commit(uint32_t _stage, uint32_t _flags, const float _palette[][4], uint8_t _firstMip, uint8_t _numMips, uint16_t _firstLayer, uint16_t _numLayers, GLenum _target)
 	{
+		if (0 != _target)
+		{
+			// Texture created from external handle is not touched by GL until
+			// it's sampled, and its target is not known at creation time.
+			// `samplerExternalOES` in shader is what makes it
+			// GL_TEXTURE_EXTERNAL_OES, so adopt target requested by program.
+			BX_ASSERT(0 != (m_flags & BGFX_SAMPLER_INTERNAL_SHARED)
+				, "samplerExternalOES can sample only texture created from external handle."
+				);
+
+			if (0 != (m_flags & BGFX_SAMPLER_INTERNAL_SHARED)
+			&&  _target != m_target)
+			{
+				m_target = _target;
+
+				// Sampler state is per texture object.
+				m_currentSamplerHash = UINT32_MAX;
+			}
+		}
+
 		const uint32_t flags = 0 == (BGFX_SAMPLER_INTERNAL_DEFAULT & _flags)
 			? _flags
 			: uint32_t(m_flags)
@@ -6775,6 +6859,21 @@ namespace bgfx { namespace gl
 					: GL_DEPTH_COMPONENT
 					) );
 			}
+		}
+
+		if (GL_TEXTURE_EXTERNAL_OES == m_target)
+		{
+			// Sampler object state can make GL_TEXTURE_EXTERNAL_OES texture
+			// incomplete, since only GL_CLAMP_TO_EDGE wrap mode, and non-mipmap
+			// filters are allowed.
+			if (s_renderGL->m_samplerObjectSupport)
+			{
+				GL_CHECK(glBindSampler(_stage, 0) );
+			}
+
+			setSamplerState(flags, _palette[index]);
+
+			return;
 		}
 
 		if (s_renderGL->m_samplerObjectSupport)
@@ -8346,6 +8445,11 @@ namespace bgfx { namespace gl
 						ProgramGL& program = m_program[key.m_program.idx];
 						setProgram(program.m_id);
 
+						const uint32_t samplerExternalMask = 0 != program.m_samplerExternal
+							? program.getSamplerExternalMask()
+							: 0
+							;
+
 						GLbitfield barrier = 0;
 						for (uint32_t ii = 0; ii < maxComputeBindings; ++ii)
 						{
@@ -8357,7 +8461,9 @@ namespace bgfx { namespace gl
 								case Binding::Texture:
 									{
 										TextureGL& texture = m_textures[bind.m_idx];
-										texture.commit(ii, bind.m_samplerFlags, _render->m_colorPalette, bind.m_firstMip, bind.m_numMips, bind.m_firstLayer, bind.m_numLayers);
+										texture.commit(ii, bind.m_samplerFlags, _render->m_colorPalette, bind.m_firstMip, bind.m_numMips, bind.m_firstLayer, bind.m_numLayers
+											, 0 != (samplerExternalMask & (UINT32_C(1)<<ii) ) ? GL_TEXTURE_EXTERNAL_OES : 0
+											);
 									}
 									break;
 
@@ -8902,6 +9008,11 @@ namespace bgfx { namespace gl
 
 					{
 						GLbitfield barrier = 0;
+						const uint32_t samplerExternalMask = 0 != program.m_samplerExternal
+							? program.getSamplerExternalMask()
+							: 0
+							;
+
 						for (uint32_t stage = 0; stage < BGFX_CONFIG_MAX_TEXTURE_SAMPLERS; ++stage)
 						{
 							const Binding& bind = renderBind.m_bind[stage];
@@ -8956,7 +9067,9 @@ namespace bgfx { namespace gl
 									case Binding::Texture:
 										{
 											TextureGL& texture = m_textures[bind.m_idx];
-											texture.commit(stage, bind.m_samplerFlags, _render->m_colorPalette, bind.m_firstMip, bind.m_numMips, bind.m_firstLayer, bind.m_numLayers);
+											texture.commit(stage, bind.m_samplerFlags, _render->m_colorPalette, bind.m_firstMip, bind.m_numMips, bind.m_firstLayer, bind.m_numLayers
+												, 0 != (samplerExternalMask & (UINT32_C(1)<<stage) ) ? GL_TEXTURE_EXTERNAL_OES : 0
+												);
 										}
 										break;
 

@@ -101,12 +101,89 @@ namespace bgfx { namespace glsl
 		return false;
 	}
 
+	static const char* s_externalSamplerMarker = "BGFX_SAMPLER_EXTERNAL";
+	static constexpr uint32_t kMaxExternalSamplers = 16;
+
+	static bool readIdentifier(const std::string& _str, size_t& _pos, bx::StringView& _out)
+	{
+		while (_pos < _str.size()
+		&&     bx::isSpace(_str[_pos]) )
+		{
+			++_pos;
+		}
+
+		const size_t begin = _pos;
+
+		while (_pos < _str.size()
+		&&     (bx::isAlphaNum(_str[_pos]) || '_' == _str[_pos]) )
+		{
+			++_pos;
+		}
+
+		if (begin == _pos)
+		{
+			return false;
+		}
+
+		_out = bx::StringView(&_str[begin], int32_t(_pos - begin) );
+
+		return true;
+	}
+
+	// `SAMPLEREXTERNAL` expands into `BGFX_SAMPLER_EXTERNAL uniform sampler2D <name>`.
+	// Collect names of external samplers, and remove marker from the code.
+	static std::string stripExternalSamplerMarkers(
+		  const std::string& _code
+		, bx::FixedString256 (&_names)[kMaxExternalSamplers]
+		, uint8_t& _numNames
+		)
+	{
+		std::string code = _code;
+
+		const size_t markerLen = bx::strLen(s_externalSamplerMarker);
+
+		for (size_t pos = code.find(s_externalSamplerMarker)
+			; std::string::npos != pos
+			; pos = code.find(s_externalSamplerMarker, pos) )
+		{
+			code.erase(pos, markerLen);
+
+			size_t offset = pos;
+
+			bx::StringView qualifier;
+			bx::StringView type;
+			bx::StringView name;
+
+			if (readIdentifier(code, offset, qualifier)
+			&&  readIdentifier(code, offset, type)
+			&&  readIdentifier(code, offset, name)
+			&&  bx::StringView("uniform") == qualifier)
+			{
+				BX_ASSERT(_numNames < BX_COUNTOF(_names)
+					, "Too many external samplers (max: %d)."
+					, BX_COUNTOF(_names)
+					);
+
+				if (_numNames < BX_COUNTOF(_names) )
+				{
+					_names[_numNames++].set(name);
+				}
+			}
+		}
+
+		return code;
+	}
+
 	static bool compileSpirvCross(const Options& _options, uint32_t _version, const std::string& _code, bx::WriterI* _shaderWriter, bx::WriterI* _messageWriter)
 	{
 		bx::ErrorAssert messageErr;
 
 		const bool     es      = 0 != (_version & 0x80000000);
 		const uint32_t version = _version & ~0x80000000;
+
+		bx::FixedString256 externalSamplers[kMaxExternalSamplers];
+		uint8_t numExternalSamplers = 0;
+		const std::string code = stripExternalSamplerMarkers(_code, externalSamplers, numExternalSamplers);
 
 		const EShLanguage stage = getLang(_options.shaderType);
 
@@ -133,7 +210,7 @@ namespace bgfx { namespace glsl
 		shader->setEnvClient(glslang::EShClientOpenGL, glslang::EShTargetOpenGL_450);
 		shader->setEnvTarget(glslang::EShTargetSpv, glslang::EShTargetSpv_1_0);
 
-		const char* shaderStrings[] = { _code.c_str() };
+		const char* shaderStrings[] = { code.c_str() };
 		shader->setStrings(
 			  shaderStrings
 			, BX_COUNTOF(shaderStrings)
@@ -167,7 +244,7 @@ namespace bgfx { namespace glsl
 					end   = start + 20;
 				}
 
-				printCode(_code.c_str(), line, start, end, -1);
+				printCode(code.c_str(), line, start, end, -1);
 
 				bx::write(_messageWriter, &messageErr, "%s\n", log);
 			}
@@ -227,6 +304,32 @@ namespace bgfx { namespace glsl
 			compilerOptions.enable_420pack_extension           = false;
 			compilerOptions.emit_uniform_buffer_as_plain_uniforms = true;
 			compiler.set_common_options(compilerOptions);
+
+			if (es
+			&&  0 != numExternalSamplers)
+			{
+				compiler.require_extension("GL_OES_EGL_image_external_essl3");
+
+				compiler.set_variable_type_remap_callback(
+					[&externalSamplers, numExternalSamplers](const spirv_cross::SPIRType& _type, const std::string& _varName, std::string& _typeName)
+					{
+						if (spirv_cross::SPIRType::SampledImage != _type.basetype)
+						{
+							return;
+						}
+
+						const bx::StringView varName(_varName.c_str(), int32_t(_varName.length() ) );
+
+						for (uint32_t ii = 0; ii < numExternalSamplers; ++ii)
+						{
+							if (externalSamplers[ii] == varName)
+							{
+								_typeName = "samplerExternalOES";
+								break;
+							}
+						}
+					});
+			}
 
 			spirv_cross::ShaderResources resources = compiler.get_shader_resources();
 

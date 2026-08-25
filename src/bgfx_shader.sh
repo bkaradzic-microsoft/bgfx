@@ -467,6 +467,8 @@ vec3 bgfxTextureSize(BgfxSampler3D _sampler, int _lod)
 #		define texture2DProj(_sampler, _coord) bgfxTexture2DProj(_sampler, _coord)
 #		define texture2DGrad(_sampler, _coord, _dPdx, _dPdy) bgfxTexture2DGrad(_sampler, _coord, _dPdx, _dPdy)
 
+#		define SAMPLEREXTERNAL(_name, _reg) SAMPLER2D(_name, _reg)
+
 #		define SAMPLER2DARRAY(_name, _reg) \
 			uniform SamplerState _name ## Sampler : REGISTER(s, _reg); \
 			uniform Texture2DArray _name ## Texture : REGISTER(t, _reg); \
@@ -572,6 +574,7 @@ float bgfxShadow2DProj(sampler2DShadow _sampler, vec4 _coord)
 #		define texture2DProj(_sampler, _coord) bgfxTexture2DProj(_sampler, _coord)
 
 #		define SAMPLER2DARRAY(_name, _reg) SAMPLER2D(_name, _reg)
+#		define SAMPLEREXTERNAL(_name, _reg) SAMPLER2D(_name, _reg)
 #		define texture2DArray(_sampler, _coord) texture2D(_sampler, (_coord).xy)
 #		define texture2DArrayLod(_sampler, _coord, _lod) texture2DLod(_sampler, _coord, _lod)
 
@@ -635,6 +638,7 @@ vec4  mod(vec4  _a, vec4  _b) { return _a - _b * floor(_a / _b); }
 #	define SAMPLER3D(_name, _reg)       uniform sampler3D _name
 #	define SAMPLERCUBE(_name, _reg)     uniform samplerCube _name
 #	define SAMPLER2DSHADOW(_name, _reg) uniform sampler2DShadow _name
+#	define SAMPLEREXTERNAL(_name, _reg) BGFX_SAMPLER_EXTERNAL uniform sampler2D _name
 
 #	define SAMPLER2DARRAY(_name, _reg)       uniform sampler2DArray _name
 #	define SAMPLER2DMSARRAY(_name, _reg)     uniform sampler2DMSArray _name
