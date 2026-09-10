@@ -403,6 +403,7 @@ class BufferFlags(enum.IntFlag):
 	DrawIndirect = 0x400
 	AllowResize = 0x800
 	Index32 = 0x1000
+	ComputeRaw = 0x2000
 	ComputeReadWrite = 0x300
 
 class TextureFlags(enum.IntFlag):
@@ -468,12 +469,13 @@ class SamplerFlags(enum.IntFlag):
 	ReservedShift = 0x1c
 	ReservedMask = 0xf0000000
 	None_ = 0x0
+	NoMips = 0x800
 	SampleStencil = 0x100000
 	Point = 0x540
 	UvwMirror = 0x15
 	UvwClamp = 0x2a
 	UvwBorder = 0x3f
-	BitsMask = 0xf07ff
+	BitsMask = 0xf0fff
 
 class ResetFlags(enum.IntFlag):
 	MsaaX2 = 0x10

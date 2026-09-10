@@ -404,6 +404,9 @@ constdef BufferFlags : inline ushort
 
 	// Index buffer contains 32-bit indices.
 	INDEX32                = 0x1000,
+
+	// Buffer is a raw (ByteAddressBuffer) compute resource, byte-addressed.
+	COMPUTERAW             = 0x2000,
 	COMPUTEREADWRITE       = 0x0300,
 }
 
@@ -541,13 +544,16 @@ constdef SamplerFlags : inline uint
 	RESERVEDMASK           = 0xf0000000,
 	NONE                   = 0x00000000,
 
+	// Sample only mip level zero, preserving min/mag filtering.
+	NOMIPS                 = 0x00000800,
+
 	// Sample stencil instead of depth.
 	SAMPLESTENCIL          = 0x00100000,
 	POINT                  = 0x00000540,
 	UVWMIRROR              = 0x00000015,
 	UVWCLAMP               = 0x0000002a,
 	UVWBORDER              = 0x0000003f,
-	BITSMASK               = 0x000f07ff,
+	BITSMASK               = 0x000f0fff,
 }
 
 constdef ResetFlags : inline uint
@@ -4200,4 +4206,3 @@ extern fn void blit_to_buffer(ushort _id, BufferRegion* _dst, TextureRegion* _sr
 // _dst : `Destination texture region.`
 // _src : `Source buffer region.`
 extern fn void blit_from_buffer(ushort _id, TextureRegion* _dst, BufferRegion* _src) @cname("bgfx_blit_from_buffer");
-

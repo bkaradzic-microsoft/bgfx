@@ -5023,6 +5023,12 @@ namespace bgfx { namespace d3d12
 		for (uint32_t ii = 0; ii < _num; ++ii)
 		{
 			uint32_t flags = _flags[ii];
+			const bool noMips = 0 != (flags & BGFX_SAMPLER_NO_MIPS);
+			const bool anisotropic = 0 != (flags & (BGFX_SAMPLER_MIN_ANISOTROPIC|BGFX_SAMPLER_MAG_ANISOTROPIC));
+			if (noMips)
+			{
+				flags = (flags & ~BGFX_SAMPLER_MIP_MASK) | (anisotropic ? 0 : BGFX_SAMPLER_MIP_POINT);
+			}
 
 			const uint32_t cmpFunc   = (flags&BGFX_SAMPLER_COMPARE_MASK)>>BGFX_SAMPLER_COMPARE_SHIFT;
 			const uint8_t  minFilter = s_textureFilter[0][(flags&BGFX_SAMPLER_MIN_MASK)>>BGFX_SAMPLER_MIN_SHIFT];
@@ -5058,7 +5064,8 @@ namespace bgfx { namespace d3d12
 				sd.BorderColor[3] = 0.0f;
 			}
 			sd.MinLOD   = 0;
-			sd.MaxLOD   = D3D12_FLOAT32_MAX;
+			// Positive LOD preserves min filtering; point mips still select level zero.
+			sd.MaxLOD   = noMips ? (anisotropic ? 0.0f : 0.25f) : D3D12_FLOAT32_MAX;
 
 			D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle =
 			{

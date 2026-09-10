@@ -229,6 +229,7 @@ flag.Buffer { bits = 16, base = 8 }
 	.DrawIndirect --- Buffer will be used for storing draw indirect commands.
 	.AllowResize  --- Allow dynamic index/vertex buffer resize during update.
 	.Index32      --- Index buffer contains 32-bit indices.
+	.ComputeRaw   --- Buffer is a raw (ByteAddressBuffer) compute resource, byte-addressed.
 	.ComputeReadWrite { "ComputeRead", "ComputeWrite" }
 	()
 
@@ -305,6 +306,7 @@ flag.SamplerReserved { bits = 32, shift = 28, range = 4 }
 
 flag.Sampler { bits = 32 }
 	.None
+	.NoMips (12)         --- Sample only mip level zero, preserving min/mag filtering.
 	.SampleStencil (21)  --- Sample stencil instead of depth.
 	.Point     { "MinPoint", "MagPoint", "MipPoint" }
 	.UvwMirror { "UMirror",  "VMirror",  "WMirror"  }
@@ -317,6 +319,7 @@ flag.Sampler { bits = 32 }
 		"MinMask",
 		"MagMask",
 		"MipMask",
+		"NoMips",
 		"CompareMask"
 	}
 	()

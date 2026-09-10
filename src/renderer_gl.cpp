@@ -2139,6 +2139,7 @@ namespace bgfx { namespace gl
 
 	static void getFilters(uint32_t _flags, bool _hasMips, GLenum& _magFilter, GLenum& _minFilter)
 	{
+		_hasMips = _hasMips && 0 == (_flags & BGFX_SAMPLER_NO_MIPS);
 		const uint32_t mag = (_flags&BGFX_SAMPLER_MAG_MASK)>>BGFX_SAMPLER_MAG_SHIFT;
 		const uint32_t min = (_flags&BGFX_SAMPLER_MIN_MASK)>>BGFX_SAMPLER_MIN_SHIFT;
 		const uint32_t mip = (_flags&BGFX_SAMPLER_MIP_MASK)>>BGFX_SAMPLER_MIP_SHIFT;

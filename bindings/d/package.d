@@ -299,6 +299,7 @@ enum Buffer: Buffer_{
 	drawIndirect      = 0x0400, ///Buffer will be used for storing draw indirect commands.
 	allowResize       = 0x0800, ///Allow dynamic index/vertex buffer resize during update.
 	index32           = 0x1000, ///Index buffer contains 32-bit indices.
+	computeRaw        = 0x2000, ///Buffer is a raw (ByteAddressBuffer) compute resource, byte-addressed.
 	computeReadWrite  = 0x0300,
 }
 
@@ -421,12 +422,13 @@ enum SamplerReserved: SamplerReserved_{
 alias Sampler_ = uint;
 enum Sampler: Sampler_{
 	none           = 0x0000_0000,
+	noMIPs         = 0x0000_0800, ///Sample only mip level zero, preserving min/mag filtering.
 	sampleStencil  = 0x0010_0000, ///Sample stencil instead of depth.
 	point          = SamplerMin.point | SamplerMag.point | SamplerMIP.point,
 	uvwMirror      = SamplerU.mirror | SamplerV.mirror | SamplerW.mirror,
 	uvwClamp       = SamplerU.clamp | SamplerV.clamp | SamplerW.clamp,
 	uvwBorder      = SamplerU.border | SamplerV.border | SamplerW.border,
-	bitsMask       = SamplerU.mask | SamplerV.mask | SamplerW.mask | SamplerMin.mask | SamplerMag.mask | SamplerMIP.mask | SamplerCompare.mask,
+	bitsMask       = SamplerU.mask | SamplerV.mask | SamplerW.mask | SamplerMin.mask | SamplerMag.mask | SamplerMIP.mask | Sampler.noMIPs | SamplerCompare.mask,
 }
 
 alias ResetMSAA_ = uint;

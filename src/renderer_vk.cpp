@@ -3960,7 +3960,7 @@ VK_IMPORT_DEVICE
 			sci.flags            = 0;
 			sci.magFilter        = _flags & BGFX_SAMPLER_MAG_POINT ? VK_FILTER_NEAREST              : VK_FILTER_LINEAR;
 			sci.minFilter        = _flags & BGFX_SAMPLER_MIN_POINT ? VK_FILTER_NEAREST              : VK_FILTER_LINEAR;
-			sci.mipmapMode       = _flags & BGFX_SAMPLER_MIP_POINT ? VK_SAMPLER_MIPMAP_MODE_NEAREST : VK_SAMPLER_MIPMAP_MODE_LINEAR;
+			sci.mipmapMode       = _flags & (BGFX_SAMPLER_MIP_POINT|BGFX_SAMPLER_NO_MIPS) ? VK_SAMPLER_MIPMAP_MODE_NEAREST : VK_SAMPLER_MIPMAP_MODE_LINEAR;
 			sci.addressModeU     = s_textureAddress[(_flags&BGFX_SAMPLER_U_MASK)>>BGFX_SAMPLER_U_SHIFT];
 			sci.addressModeV     = s_textureAddress[(_flags&BGFX_SAMPLER_V_MASK)>>BGFX_SAMPLER_V_SHIFT];
 			sci.addressModeW     = s_textureAddress[(_flags&BGFX_SAMPLER_W_MASK)>>BGFX_SAMPLER_W_SHIFT];
@@ -3970,7 +3970,10 @@ VK_IMPORT_DEVICE
 			sci.compareEnable    = 0 != cmpFunc;
 			sci.compareOp        = s_cmpFunc[cmpFunc];
 			sci.minLod           = 0.0f;
-			sci.maxLod           = VK_LOD_CLAMP_NONE;
+			// Vulkan's non-mipmapped GL filter emulation needs a positive maxLod.
+			sci.maxLod           = 0 != (_flags & BGFX_SAMPLER_NO_MIPS)
+				? (sci.anisotropyEnable ? 0.0f : 0.25f)
+				: VK_LOD_CLAMP_NONE;
 			sci.borderColor      = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
 			sci.unnormalizedCoordinates = VK_FALSE;
 

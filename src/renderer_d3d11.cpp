@@ -3275,12 +3275,18 @@ namespace bgfx { namespace d3d11
 		{
 			const uint32_t index = (_flags & BGFX_SAMPLER_BORDER_COLOR_MASK) >> BGFX_SAMPLER_BORDER_COLOR_SHIFT;
 			_flags &= BGFX_SAMPLER_BITS_MASK;
+			const bool noMips = 0 != (_flags & BGFX_SAMPLER_NO_MIPS);
+			const bool anisotropic = 0 != (_flags & (BGFX_SAMPLER_MIN_ANISOTROPIC|BGFX_SAMPLER_MAG_ANISOTROPIC));
 
 			// Force min+mag anisotropic (can't be set individually) and remove mip (not supported).
-			if (0 != (_flags & (BGFX_SAMPLER_MIN_ANISOTROPIC|BGFX_SAMPLER_MAG_ANISOTROPIC)))
+			if (anisotropic)
 			{
 				_flags |= BGFX_SAMPLER_MIN_ANISOTROPIC|BGFX_SAMPLER_MAG_ANISOTROPIC;
 				_flags &= ~BGFX_SAMPLER_MIP_MASK;
+			}
+			else if (noMips)
+			{
+				_flags |= BGFX_SAMPLER_MIP_POINT;
 			}
 
 			uint32_t hash;
@@ -3340,7 +3346,8 @@ namespace bgfx { namespace d3d11
 				sd.BorderColor[2] = _rgba[2];
 				sd.BorderColor[3] = _rgba[3];
 				sd.MinLOD = 0;
-				sd.MaxLOD = D3D11_FLOAT32_MAX;
+				// Positive LOD preserves min filtering; point mips still select level zero.
+				sd.MaxLOD = noMips ? (anisotropic ? 0.0f : 0.25f) : D3D11_FLOAT32_MAX;
 
 				DX_CHECK(m_device->CreateSamplerState(&sd, &sampler));
 				DX_CHECK_REFCOUNT(sampler, 1);

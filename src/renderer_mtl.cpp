@@ -3507,7 +3507,9 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 				desc->setRAddressMode( getAddressMode( (_flags & BGFX_SAMPLER_W_MASK  ) >> BGFX_SAMPLER_W_SHIFT  ) );
 				desc->setMinFilter(s_textureFilterMinMag[(_flags & BGFX_SAMPLER_MIN_MASK) >> BGFX_SAMPLER_MIN_SHIFT]);
 				desc->setMagFilter(s_textureFilterMinMag[(_flags & BGFX_SAMPLER_MAG_MASK) >> BGFX_SAMPLER_MAG_SHIFT]);
-				desc->setMipFilter(   s_textureFilterMip[(_flags & BGFX_SAMPLER_MIP_MASK) >> BGFX_SAMPLER_MIP_SHIFT]);
+				desc->setMipFilter(0 != (_flags & BGFX_SAMPLER_NO_MIPS)
+					? MTL::SamplerMipFilterNotMipmapped
+					: s_textureFilterMip[(_flags & BGFX_SAMPLER_MIP_MASK) >> BGFX_SAMPLER_MIP_SHIFT]);
 				desc->setLodMinClamp(0);
 				desc->setLodMaxClamp(FLT_MAX);
 				desc->setNormalizedCoordinates(TRUE);

@@ -368,6 +368,7 @@
 #define BGFX_SAMPLER_RESERVED_MASK                UINT32_C(0xf0000000)
 
 #define BGFX_SAMPLER_NONE                         UINT32_C(0x00000000)
+#define BGFX_SAMPLER_NO_MIPS                      UINT32_C(0x00000800) //!< Sample only mip level zero, preserving min/mag filtering.
 #define BGFX_SAMPLER_SAMPLE_STENCIL               UINT32_C(0x00100000) //!< Sample stencil instead of depth.
 #define BGFX_SAMPLER_POINT (0 \
 	| BGFX_SAMPLER_MIN_POINT \
@@ -400,6 +401,7 @@
 	| BGFX_SAMPLER_MIN_MASK \
 	| BGFX_SAMPLER_MAG_MASK \
 	| BGFX_SAMPLER_MIP_MASK \
+	| BGFX_SAMPLER_NO_MIPS \
 	| BGFX_SAMPLER_COMPARE_MASK \
 	)
 

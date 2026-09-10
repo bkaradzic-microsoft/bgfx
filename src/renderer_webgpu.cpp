@@ -4868,9 +4868,10 @@ WGPU_IMPORT
 		samplerFlags &= BGFX_SAMPLER_BITS_MASK;
 		WGPUSampler sampler = s_renderWGPU->m_samplerStateCache.find(samplerFlags);
 
-		const bool disableAniso = true
-			&& (BGFX_SAMPLER_MIN_POINT == (samplerFlags&BGFX_SAMPLER_MIN_POINT) )
-			&& (BGFX_SAMPLER_MAG_POINT == (samplerFlags&BGFX_SAMPLER_MAG_POINT) )
+		const bool noMips = 0 != (samplerFlags & BGFX_SAMPLER_NO_MIPS);
+		const bool anisotropic = true
+			&& 0 != (samplerFlags & (BGFX_SAMPLER_MIN_ANISOTROPIC|BGFX_SAMPLER_MAG_ANISOTROPIC) )
+			&& 0 == (samplerFlags & (BGFX_SAMPLER_MIN_POINT|BGFX_SAMPLER_MAG_POINT) )
 			;
 
 		if (NULL == sampler)
@@ -4885,11 +4886,13 @@ WGPU_IMPORT
 				.addressModeW  = s_textureAddress[(samplerFlags&BGFX_SAMPLER_W_MASK)>>BGFX_SAMPLER_W_SHIFT],
 				.magFilter     = s_textureFilterMinMag[(samplerFlags&BGFX_SAMPLER_MAG_MASK)>>BGFX_SAMPLER_MAG_SHIFT],
 				.minFilter     = s_textureFilterMinMag[(samplerFlags&BGFX_SAMPLER_MIN_MASK)>>BGFX_SAMPLER_MIN_SHIFT],
-				.mipmapFilter  = s_textureFilterMip[(samplerFlags&BGFX_SAMPLER_MIP_MASK)>>BGFX_SAMPLER_MIP_SHIFT],
+				.mipmapFilter  = anisotropic ? WGPUMipmapFilterMode_Linear
+					: noMips ? WGPUMipmapFilterMode_Nearest
+					: s_textureFilterMip[(samplerFlags&BGFX_SAMPLER_MIP_MASK)>>BGFX_SAMPLER_MIP_SHIFT],
 				.lodMinClamp   = 0,
-				.lodMaxClamp   = bx::kFloatLargest,
+				.lodMaxClamp   = noMips ? (anisotropic ? 0.0f : 0.25f) : bx::kFloatLargest,
 				.compare       = 0 == cmpFunc ? WGPUCompareFunction_Undefined : s_cmpFunc[cmpFunc],
-				.maxAnisotropy = disableAniso ? uint16_t(1) : s_renderWGPU->m_maxAnisotropy,
+				.maxAnisotropy = anisotropic ? s_renderWGPU->m_maxAnisotropy : uint16_t(1),
 			};
 
 			sampler = WGPU_CHECK(wgpuDeviceCreateSampler(s_renderWGPU->m_device, &samplerDesc) );

@@ -645,6 +645,11 @@ public static class bgfx
 		/// Index buffer contains 32-bit indices.
 		/// </summary>
 		Index32                = 0x1000,
+
+		/// <summary>
+		/// Buffer is a raw (ByteAddressBuffer) compute resource, byte-addressed.
+		/// </summary>
+		ComputeRaw             = 0x2000,
 		ComputeReadWrite       = 0x0300,
 	}
 	
@@ -853,6 +858,11 @@ public static class bgfx
 		None                   = 0x00000000,
 	
 		/// <summary>
+		/// Sample only mip level zero, preserving min/mag filtering.
+		/// </summary>
+		NoMips                 = 0x00000800,
+
+		/// <summary>
 		/// Sample stencil instead of depth.
 		/// </summary>
 		SampleStencil          = 0x00100000,
@@ -860,7 +870,7 @@ public static class bgfx
 		UvwMirror              = 0x00000015,
 		UvwClamp               = 0x0000002a,
 		UvwBorder              = 0x0000003f,
-		BitsMask               = 0x000f07ff,
+		BitsMask               = 0x000f0fff,
 	}
 	
 	[AllowDuplicates]

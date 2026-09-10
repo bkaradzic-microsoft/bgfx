@@ -754,6 +754,8 @@ class BufferFlags(enum.IntFlag):
 	AllowResize = 0x800
 	# Index buffer contains 32-bit indices.
 	Index32 = 0x1000
+	# Buffer is a raw (ByteAddressBuffer) compute resource, byte-addressed.
+	ComputeRaw = 0x2000
 	ComputeReadWrite = 0x300
 
 class TextureFlags(enum.IntFlag):
@@ -857,13 +859,15 @@ class SamplerFlags(enum.IntFlag):
 	ReservedShift = 0x1c
 	ReservedMask = 0xf0000000
 	None_ = 0x0
+	# Sample only mip level zero, preserving min/mag filtering.
+	NoMips = 0x800
 	# Sample stencil instead of depth.
 	SampleStencil = 0x100000
 	Point = 0x540
 	UvwMirror = 0x15
 	UvwClamp = 0x2a
 	UvwBorder = 0x3f
-	BitsMask = 0xf07ff
+	BitsMask = 0xf0fff
 
 class ResetFlags(enum.IntFlag):
 	# Enable 2x MSAA.

@@ -394,6 +394,9 @@ pub const BufferFlags_AllowResize: BufferFlags            = 0x0800;
 
 /// Index buffer contains 32-bit indices.
 pub const BufferFlags_Index32: BufferFlags                = 0x1000;
+
+/// Buffer is a raw (ByteAddressBuffer) compute resource, byte-addressed.
+pub const BufferFlags_ComputeRaw: BufferFlags             = 0x2000;
 pub const BufferFlags_ComputeReadWrite: BufferFlags       = 0x0300;
 
 pub const TextureFlags = u64;
@@ -527,13 +530,16 @@ pub const SamplerFlags_ReservedShift: SamplerFlags          = 28;
 pub const SamplerFlags_ReservedMask: SamplerFlags           = 0xf0000000;
 pub const SamplerFlags_None: SamplerFlags                   = 0x00000000;
 
+/// Sample only mip level zero, preserving min/mag filtering.
+pub const SamplerFlags_NoMips: SamplerFlags                 = 0x00000800;
+
 /// Sample stencil instead of depth.
 pub const SamplerFlags_SampleStencil: SamplerFlags          = 0x00100000;
 pub const SamplerFlags_Point: SamplerFlags                  = 0x00000540;
 pub const SamplerFlags_UvwMirror: SamplerFlags              = 0x00000015;
 pub const SamplerFlags_UvwClamp: SamplerFlags               = 0x0000002a;
 pub const SamplerFlags_UvwBorder: SamplerFlags              = 0x0000003f;
-pub const SamplerFlags_BitsMask: SamplerFlags               = 0x000f07ff;
+pub const SamplerFlags_BitsMask: SamplerFlags               = 0x000f0fff;
 
 pub const ResetFlags = u32;
 /// Enable 2x MSAA.
@@ -4745,5 +4751,4 @@ pub inline fn blitFromBuffer(_id: ViewId, _dst: [*c]const TextureRegion, _src: [
     return bgfx_blit_from_buffer(_id, _dst, _src);
 }
 extern fn bgfx_blit_from_buffer(_id: ViewId, _dst: [*c]const TextureRegion, _src: [*c]const BufferRegion) void;
-
 
