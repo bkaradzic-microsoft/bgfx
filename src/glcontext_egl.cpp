@@ -245,8 +245,10 @@ WL_EGL_IMPORT
 	static EGL_DISPMANX_WINDOW_T s_dispmanWindow;
 #	endif // BX_PLATFORM_RPI
 
-	void GlContext::create(const Resolution& _resolution)
+	void GlContext::create(const SwapChain& _swapChain, uint32_t _reset)
 	{
+		m_nwh = _swapChain.nwh;
+
 #	if BX_PLATFORM_RPI
 		bcm_host_init();
 #	endif // BX_PLATFORM_RPI
@@ -256,15 +258,16 @@ WL_EGL_IMPORT
 
 		if (m_ownsContext)
 		{
+			void* ndtRaw = _swapChain.ndt;
 #	if BX_PLATFORM_RPI
-			g_platformData.ndt = EGL_DEFAULT_DISPLAY;
+			ndtRaw = EGL_DEFAULT_DISPLAY;
 #	endif // BX_PLATFORM_RPI
 
-			EGLNativeDisplayType ndt = (EGLNativeDisplayType)g_platformData.ndt;
-			EGLNativeWindowType  nwh = (EGLNativeWindowType )g_platformData.nwh;
+			EGLNativeDisplayType ndt = (EGLNativeDisplayType)ndtRaw;
+			EGLNativeWindowType  nwh = (EGLNativeWindowType )m_nwh;
 
 #	if BX_PLATFORM_WINDOWS
-			if (NULL == g_platformData.ndt
+			if (NULL == ndtRaw
 			&&  NULL != nwh)
 			{
 				m_hdc = GetDC( (HWND)nwh);
@@ -312,13 +315,17 @@ WL_EGL_IMPORT
 				: BGFX_CONFIG_RENDERER_OPENGLES
 				;
 
-			const uint32_t msaa = (_resolution.reset & BGFX_RESET_MSAA_MASK)>>BGFX_RESET_MSAA_SHIFT;
+			const uint32_t msaa = (_swapChain.flags & BGFX_SWAP_CHAIN_MSAA_MASK)>>BGFX_SWAP_CHAIN_MSAA_SHIFT;
 			uint32_t msaaSamples = 0 == msaa ? 0 : 1<<msaa;
 
 			const bool headless = EGLNativeWindowType(0) == nwh;
 
-			const bimg::ImageBlockInfo& colorBlockInfo       = bimg::getBlockInfo(bimg::TextureFormat::Enum(_resolution.formatColor) );
-			const bimg::ImageBlockInfo& depthStecilBlockInfo = bimg::getBlockInfo(bimg::TextureFormat::Enum(_resolution.formatDepthStencil) );
+			const bimg::ImageBlockInfo& colorBlockInfo = bimg::getBlockInfo(bimg::TextureFormat::Enum(_swapChain.formatColor) );
+			const bimg::ImageBlockInfo noDepth = {};
+			const bimg::ImageBlockInfo& depthStecilBlockInfo = TextureFormat::Count == _swapChain.formatDepthStencil
+				? noDepth
+				: bimg::getBlockInfo(bimg::TextureFormat::Enum(_swapChain.formatDepthStencil) )
+				;
 
 			EGLint numConfigs = 0;
 			EGLConfig configs[256];
@@ -481,21 +488,24 @@ WL_EGL_IMPORT
 			m_msaaContext = 1 < msaaSamples;
 
 #	if BX_PLATFORM_ANDROID
-			EGLint format;
-			eglGetConfigAttrib(m_display, m_config, EGL_NATIVE_VISUAL_ID, &format);
-			ANativeWindow_setBuffersGeometry(
-				  (ANativeWindow*)g_platformData.nwh
-				, _resolution.width
-				, _resolution.height
-				, format
-				);
+			if (!headless)
+			{
+				EGLint format;
+				eglGetConfigAttrib(m_display, m_config, EGL_NATIVE_VISUAL_ID, &format);
+				ANativeWindow_setBuffersGeometry(
+					  (ANativeWindow*)m_nwh
+					, _swapChain.width
+					, _swapChain.height
+					, format
+					);
+			}
 
 #	elif BX_PLATFORM_RPI
 			DISPMANX_DISPLAY_HANDLE_T dispmanDisplay = vc_dispmanx_display_open(0);
 			DISPMANX_UPDATE_HANDLE_T  dispmanUpdate  = vc_dispmanx_update_start(0);
 
-			VC_RECT_T dstRect = { 0, 0, int32_t(_resolution.width),        int32_t(_resolution.height)       };
-			VC_RECT_T srcRect = { 0, 0, int32_t(_resolution.width)  << 16, int32_t(_resolution.height) << 16 };
+			VC_RECT_T dstRect = { 0, 0, int32_t(_swapChain.width),        int32_t(_swapChain.height)       };
+			VC_RECT_T srcRect = { 0, 0, int32_t(_swapChain.width)  << 16, int32_t(_swapChain.height) << 16 };
 
 			DISPMANX_ELEMENT_HANDLE_T dispmanElement = vc_dispmanx_element_add(dispmanUpdate
 				, dispmanDisplay
@@ -510,8 +520,8 @@ WL_EGL_IMPORT
 				);
 
 			s_dispmanWindow.element = dispmanElement;
-			s_dispmanWindow.width   = _resolution.width;
-			s_dispmanWindow.height  = _resolution.height;
+			s_dispmanWindow.width   = _swapChain.width;
+			s_dispmanWindow.height  = _swapChain.height;
 			nwh = (EGLNativeWindowType) &s_dispmanWindow;
 
 			vc_dispmanx_update_submit_sync(dispmanUpdate);
@@ -545,8 +555,8 @@ WL_EGL_IMPORT
 					// before it can be used to create the EGLSurface.
 					m_eglWindow = wl_egl_window_create(
 						  (wl_surface*)nwh
-						, _resolution.width
-						, _resolution.height
+						, _swapChain.width
+						, _swapChain.height
 						);
 					nwh = (EGLNativeWindowType) m_eglWindow;
 				}
@@ -625,7 +635,7 @@ WL_EGL_IMPORT
 			BGFX_FATAL(success, Fatal::UnableToInitialize, "Failed to set context.");
 			m_current = NULL;
 
-			m_swapInterval = !!(_resolution.reset & BGFX_RESET_VSYNC) ? 1 : 0;
+			m_swapInterval = !!(_reset & BGFX_RESET_VSYNC) ? 1 : 0;
 			eglSwapInterval(m_display, m_swapInterval);
 		}
 		else
@@ -737,7 +747,7 @@ WL_EGL_IMPORT
 			}
 
 			m_current = NULL;
-			m_swapInterval = !!(_resolution.reset & BGFX_RESET_VSYNC) ? 1 : 0;
+			m_swapInterval = !!(_reset & BGFX_RESET_VSYNC) ? 1 : 0;
 		}
 
 		import();
@@ -787,7 +797,7 @@ WL_EGL_IMPORT
 #	if BX_PLATFORM_WINDOWS
 		if (NULL != m_hdc)
 		{
-			ReleaseDC( (HWND)g_platformData.nwh, m_hdc);
+			ReleaseDC( (HWND)m_nwh, m_hdc);
 			m_hdc = NULL;
 		}
 #	endif // BX_PLATFORM_WINDOWS
@@ -797,7 +807,7 @@ WL_EGL_IMPORT
 #	endif // BX_PLATFORM_RPI
 	}
 
-	void GlContext::resize(const Resolution& _resolution)
+	void GlContext::resize(const SwapChain& _swapChain, uint32_t _reset)
 	{
 		if (!m_ownsContext
 		&&  m_context == eglGetCurrentContext() )
@@ -808,9 +818,10 @@ WL_EGL_IMPORT
 
 #	if BX_PLATFORM_ANDROID
 		if (m_ownsContext
-		&&  NULL != m_display)
+		&&  NULL != m_display
+		&&  NULL != m_nwh)
 		{
-			EGLNativeWindowType nwh = (EGLNativeWindowType )g_platformData.nwh;
+			EGLNativeWindowType nwh = (EGLNativeWindowType )m_nwh;
 			eglMakeCurrent(m_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 			eglDestroySurface(m_display, m_surface);
 
@@ -824,17 +835,17 @@ WL_EGL_IMPORT
 			EGLint format;
 			eglGetConfigAttrib(m_display, m_config, EGL_NATIVE_VISUAL_ID, &format);
 			ANativeWindow_setBuffersGeometry(
-				  (ANativeWindow*)g_platformData.nwh
-				, _resolution.width
-				, _resolution.height
+				  (ANativeWindow*)m_nwh
+				, _swapChain.width
+				, _swapChain.height
 				, format
 				);
 		}
 #	elif BX_PLATFORM_EMSCRIPTEN
 		EMSCRIPTEN_CHECK(emscripten_set_canvas_element_size(
 			  HTML5_TARGET_CANVAS_SELECTOR
-			, _resolution.width
-			, _resolution.height
+			, _swapChain.width
+			, _swapChain.height
 			)
 			);
 #	elif BX_PLATFORM_LINUX
@@ -842,23 +853,20 @@ WL_EGL_IMPORT
 		{
 			wl_egl_window_resize(
 				  m_eglWindow
-				, _resolution.width
-				, _resolution.height
+				, _swapChain.width
+				, _swapChain.height
 				, 0
 				, 0
 				);
 		}
 #	endif // BX_PLATFORM_*
 
-		const bool vsync = !!(_resolution.reset & BGFX_RESET_VSYNC);
+		const bool vsync = !!(_reset & BGFX_RESET_VSYNC);
 		m_swapInterval = vsync ? 1 : 0;
 
 		if (NULL != m_display
 		&&  EGL_NO_SURFACE != m_surface)
 		{
-			// Apply to the currently-bound (main) surface. Secondary SwapChainGL surfaces
-			// get the value applied lazily in makeCurrent() when they become current, since
-			// eglSwapInterval is per-surface.
 			EGL_CHECK(eglSwapInterval(m_display, m_swapInterval) );
 		}
 	}
