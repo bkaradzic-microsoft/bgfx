@@ -4527,10 +4527,9 @@ namespace bgfx { namespace gl
 						GL_CHECK(glSamplerParameterfv(sampler, GL_TEXTURE_BORDER_COLOR, _rgba) );
 					}
 
-					if (0 != (_flags & (BGFX_SAMPLER_MIN_ANISOTROPIC|BGFX_SAMPLER_MAG_ANISOTROPIC) )
-					&&  0.0f < m_maxAnisotropy)
+					if (0.0f < m_maxAnisotropyDefault)
 					{
-						GL_CHECK(glSamplerParameterf(sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, m_maxAnisotropy) );
+						GL_CHECK(glSamplerParameterf(sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, getSamplerMaxAnisotropy(_flags, m_maxAnisotropy) ) );
 					}
 
 					const uint32_t cmpFunc = (_flags&BGFX_SAMPLER_COMPARE_MASK)>>BGFX_SAMPLER_COMPARE_SHIFT;
@@ -6684,10 +6683,9 @@ namespace bgfx { namespace gl
 				GL_CHECK(glTexParameterfv(target, GL_TEXTURE_BORDER_COLOR, _rgba) );
 			}
 
-			if (0 != (flags & (BGFX_SAMPLER_MIN_ANISOTROPIC|BGFX_SAMPLER_MAG_ANISOTROPIC) )
-			&&  0.0f < s_renderGL->m_maxAnisotropy)
+			if (0.0f < s_renderGL->m_maxAnisotropyDefault)
 			{
-				GL_CHECK(glTexParameterf(target, GL_TEXTURE_MAX_ANISOTROPY_EXT, s_renderGL->m_maxAnisotropy) );
+				GL_CHECK(glTexParameterf(target, GL_TEXTURE_MAX_ANISOTROPY_EXT, getSamplerMaxAnisotropy(flags, s_renderGL->m_maxAnisotropy) ) );
 			}
 
 			const uint32_t cmpFunc = (flags&BGFX_SAMPLER_COMPARE_MASK)>>BGFX_SAMPLER_COMPARE_SHIFT;

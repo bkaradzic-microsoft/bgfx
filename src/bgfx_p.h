@@ -691,6 +691,19 @@ namespace bgfx
 		release( (const Memory*)_mem);
 	}
 
+	template<typename Ty>
+	inline Ty getSamplerMaxAnisotropy(uint32_t _flags, Ty _maximum)
+	{
+		if (0 == (_flags & (BGFX_SAMPLER_MIN_ANISOTROPIC|BGFX_SAMPLER_MAG_ANISOTROPIC) )
+		||  _maximum <= Ty(1) )
+		{
+			return Ty(1);
+		}
+
+		const uint32_t limit = (_flags & BGFX_SAMPLER_MAX_ANISOTROPY_MASK) >> BGFX_SAMPLER_MAX_ANISOTROPY_SHIFT;
+		return 0 == limit ? _maximum : bx::min(_maximum, Ty(limit + 1) );
+	}
+
 	static constexpr uint32_t kTextureZeroInitBudget = 64<<10;
 
 	inline constexpr uint32_t textureZeroInitTileDim(uint32_t _bpp, uint32_t _budget = kTextureZeroInitBudget)

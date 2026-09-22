@@ -3190,7 +3190,7 @@ namespace bgfx { namespace d3d11
 				sd.AddressV       = s_textureAddress[(_flags&BGFX_SAMPLER_V_MASK)>>BGFX_SAMPLER_V_SHIFT];
 				sd.AddressW       = s_textureAddress[(_flags&BGFX_SAMPLER_W_MASK)>>BGFX_SAMPLER_W_SHIFT];
 				sd.MipLODBias     = float(BGFX_CONFIG_MIP_LOD_BIAS);
-				sd.MaxAnisotropy  = m_maxAnisotropy;
+				sd.MaxAnisotropy  = getSamplerMaxAnisotropy(_flags, m_maxAnisotropy);
 				sd.ComparisonFunc = 0 == cmpFunc ? D3D11_COMPARISON_NEVER : s_cmpFunc[cmpFunc];
 				sd.BorderColor[0] = _rgba[0];
 				sd.BorderColor[1] = _rgba[1];

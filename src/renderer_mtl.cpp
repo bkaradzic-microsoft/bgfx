@@ -920,6 +920,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 
 			m_fbh = BGFX_INVALID_HANDLE;
 			m_mainSwapChain = _init.swapChain;
+			m_maxAnisotropy = 0 != (_init.reset & BGFX_RESET_MAXANISOTROPY) ? 16 : 1;
 
 			m_device = (MTL::Device*)g_platformData.context;
 
@@ -1235,13 +1236,6 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 
 			m_screenshotBlitProgram.create(&m_screenshotBlitProgramVsh, &m_screenshotBlitProgramFsh);
 
-			reset(m_renderPipelineDescriptor);
-			m_renderPipelineDescriptor->colorAttachments()->object(0)->setPixelFormat(getSwapChainPixelFormat(m_mainFrameBuffer.m_swapChain) );
-
-			m_renderPipelineDescriptor->setVertexFunction(m_screenshotBlitProgram.m_vsh->m_function);
-			m_renderPipelineDescriptor->setFragmentFunction(m_screenshotBlitProgram.m_fsh->m_function);
-			m_screenshotBlitRenderPipelineState = newRenderPipelineStateWithDescriptor(m_device, m_renderPipelineDescriptor);
-
 			m_occlusionQuery.preReset();
 			m_gpuTimer.init();
 
@@ -1504,6 +1498,127 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 				bx::memCopy(_texel, &_depth, sizeof(_depth) );
 				break;
 			}
+		}
+
+		static float decodeDepth(const uint8_t* _texel, TextureFormat::Enum _format)
+		{
+			switch (_format)
+			{
+			case TextureFormat::D16:
+			case TextureFormat::D16F:
+				{
+					uint16_t value;
+					bx::memCopy(&value, _texel, sizeof(value) );
+					return TextureFormat::D16 == _format
+						? bx::fromUnorm(value, 65535.0f)
+						: bx::halfToFloat(value)
+						;
+				}
+
+			case TextureFormat::D24:
+			case TextureFormat::D24F:
+			case TextureFormat::D24S8:
+				{
+					const uint32_t value = uint32_t(_texel[0])
+						| uint32_t(_texel[1]) << 8
+						| uint32_t(_texel[2]) << 16
+						;
+					return bx::fromUnorm(value, 16777215.0f);
+				}
+
+			case TextureFormat::D32:
+				{
+					uint32_t value;
+					bx::memCopy(&value, _texel, sizeof(value) );
+					return float(double(value) / 4294967295.0);
+				}
+
+			default: // D32F, D32FS8
+				{
+					float value;
+					bx::memCopy(&value, _texel, sizeof(value) );
+					return value;
+				}
+			}
+		}
+
+		void updateTextureDepth(const TextureMtl& _texture, uint16_t _layer, uint8_t _mip, const Rect& _rect, const uint8_t* _data, uint32_t _pitch)
+		{
+			const TextureFormat::Enum format = TextureFormat::Enum(_texture.m_textureFormat);
+			const MTL::PixelFormat depthFormat = _texture.m_ptr->pixelFormat();
+			const bool combined = MTL::PixelFormatDepth24Unorm_Stencil8 == depthFormat
+				||                MTL::PixelFormatDepth32Float_Stencil8 == depthFormat
+				;
+			const bool depth   = hasDepthAspect(format);
+			const bool stencil = hasStencilAspect(format);
+			const uint32_t depthBytes = MTL::PixelFormatDepth16Unorm == depthFormat ? 2 : 4;
+			const uint32_t depthPitch   = depth   ? bx::strideAlign(_rect.m_width*depthBytes, 4) : 0;
+			const uint32_t stencilPitch = stencil ? bx::strideAlign(_rect.m_width, 4)            : 0;
+			const uint32_t depthSize   = depthPitch*_rect.m_height;
+			const uint32_t stencilSize = stencilPitch*_rect.m_height;
+			const uint32_t texelSize = bimg::getBlockInfo(bimg::TextureFormat::Enum(format) ).blockSize;
+			const TextureFormat::Enum storageFormat = MTL::PixelFormatDepth16Unorm == depthFormat
+				? TextureFormat::D16
+				: MTL::PixelFormatDepth24Unorm_Stencil8 == depthFormat
+					? TextureFormat::D24S8
+					: TextureFormat::D32F
+				;
+
+			// Metal depth storage is private and may have a different layout from the bgfx format.
+			MTL::Buffer* staging = m_device->newBuffer(depthSize + stencilSize, MTL::ResourceStorageModeShared);
+			uint8_t* depthPlane   = (uint8_t*)staging->contents();
+			uint8_t* stencilPlane = depthPlane + depthSize;
+			bx::memSet(depthPlane, 0, depthSize + stencilSize);
+			for (uint32_t yy = 0; yy < _rect.m_height; ++yy)
+			{
+				for (uint32_t xx = 0; xx < _rect.m_width; ++xx)
+				{
+					const uint8_t* texel = _data + yy*_pitch + xx*texelSize;
+					if (depth)
+					{
+						encodeDepth(depthPlane + yy*depthPitch + xx*depthBytes, decodeDepth(texel, format), storageFormat);
+					}
+					if (stencil)
+					{
+						stencilPlane[yy*stencilPitch + xx] = texel[stencilOffset(format)];
+					}
+				}
+			}
+
+			MTL::BlitCommandEncoder* bce = getBlitCommandEncoder();
+			const MTL::Origin origin(_rect.m_x, _rect.m_y, 0);
+			const MTL::Size size(_rect.m_width, _rect.m_height, 1);
+			if (depth)
+			{
+				bce->copyFromBuffer(
+					  staging
+					, 0
+					, depthPitch
+					, depthSize
+					, size
+					, _texture.m_ptr
+					, _layer
+					, _mip
+					, origin
+					, combined ? MTL::BlitOptionDepthFromDepthStencil : MTL::BlitOptionNone
+					);
+			}
+			if (stencil)
+			{
+				bce->copyFromBuffer(
+					  staging
+					, depthSize
+					, stencilPitch
+					, stencilSize
+					, size
+					, NULL != _texture.m_ptrStencil ? _texture.m_ptrStencil : _texture.m_ptr
+					, _layer
+					, _mip
+					, origin
+					, combined ? MTL::BlitOptionStencilFromDepthStencil : MTL::BlitOptionNone
+					);
+			}
+			m_cmd.release(staging);
 		}
 
 		void readTextureDepth(const TextureMtl& _texture, void* _data, uint16_t _layer, uint8_t _mip)
@@ -2090,13 +2205,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 		{
 			SwapChainMtl* swapChain = m_mainFrameBuffer.m_swapChain;
 
-			if (NULL != swapChain)
-			{
-				swapChain->m_maxAnisotropy = !!(_reset & BGFX_RESET_MAXANISOTROPY)
-					? 16
-					: 1
-					;
-			}
+			m_maxAnisotropy = 0 != (_reset & BGFX_RESET_MAXANISOTROPY) ? 16 : 1;
 
 			uint32_t maskFlags = ~(0
 				| BGFX_RESET_MAXANISOTROPY
@@ -2139,8 +2248,6 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 			{
 				m_mainSwapChain = _swapChain;
 
-				const MTL::PixelFormat prevPixelFormat = getSwapChainPixelFormat(swapChain);
-
 				if (NULL != swapChain)
 				{
 					if (m_reset & BGFX_RESET_INTERNAL_FORCE
@@ -2164,18 +2271,6 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 				m_textVideoMem.resize(false, _swapChain.width, _swapChain.height);
 				m_textVideoMem.clear();
 
-				const MTL::PixelFormat pixelFormat = getSwapChainPixelFormat(swapChain);
-
-				if (prevPixelFormat != pixelFormat)
-				{
-					MTL_RELEASE_I(m_screenshotBlitRenderPipelineState);
-					reset(m_renderPipelineDescriptor);
-
-					m_renderPipelineDescriptor->colorAttachments()->object(0)->setPixelFormat(pixelFormat);
-					m_renderPipelineDescriptor->setVertexFunction(m_screenshotBlitProgram.m_vsh->m_function);
-					m_renderPipelineDescriptor->setFragmentFunction(m_screenshotBlitProgram.m_fsh->m_function);
-					m_screenshotBlitRenderPipelineState = newRenderPipelineStateWithDescriptor(m_device, m_renderPipelineDescriptor);
-				}
 			}
 		}
 
@@ -2413,6 +2508,18 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 				numMrt = bx::max(1, fb.m_num);
 			}
 
+			uint8_t colorAttachmentMask = UINT8_MAX;
+			if (BGFX_CLEAR_COLOR_USE_PALETTE & _clear.m_flags)
+			{
+				for (uint32_t ii = 0; ii < numMrt; ++ii)
+				{
+					if (UINT8_MAX == _clear.m_index[ii])
+					{
+						colorAttachmentMask &= ~(1 << ii);
+					}
+				}
+			}
+
 			const VertexLayout* layout  = &m_vertexLayouts[_clearQuad.m_layout.idx];
 			const PipelineStateMtl* pso = getPipelineState(
 				  state
@@ -2422,6 +2529,8 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 				, &layout
 				, _clearQuad.m_program[numMrt-1]
 				, 0
+				, UINT32_MAX
+				, colorAttachmentMask
 				);
 			setRenderPipelineState(pso->m_rps);
 
@@ -2779,6 +2888,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 
 		void processArguments(
 			  PipelineStateMtl* ps
+			, const ProgramMtl& _program
 			, NS::Array* _vertexArgs
 			, NS::Array* _fragmentArgs
 			)
@@ -2798,6 +2908,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 				{
 					continue;
 				}
+				const ShaderMtl* shader = shaderType == 0 ? _program.m_vsh : _program.m_fsh;
 
 				for (NS::UInteger argIdx = 0, argCount = args->count(); argIdx < argCount; ++argIdx)
 				{
@@ -2880,10 +2991,10 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 										}
 										else
 										{
-											const UniformRegInfo* info = s_renderMtl->m_uniformReg.find(name);
-											BX_WARN(NULL != info, "User defined uniform '%s' is not found, it won't be set.", name);
+											const ShaderMtl::UniformMap::const_iterator uniformIt = shader->m_uniforms.find(bx::hash<bx::HashMurmur2A>(name) );
+											BX_WARN(uniformIt != shader->m_uniforms.end(), "User defined uniform '%s' is not found, it won't be set.", name);
 
-											if (NULL != info)
+											if (uniformIt != shader->m_uniforms.end() )
 											{
 												if (NULL == constantBuffer)
 												{
@@ -2891,8 +3002,8 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 												}
 
 												UniformType::Enum type = convertMtlType(dataType);
-												constantBuffer->writeUniformHandle(type|fragmentBit, uint32_t(uniform->offset() ), info->m_handle, uint16_t(num) );
-												BX_TRACE("store %s %d offset:%d", name, info->m_handle, uint32_t(uniform->offset() ) );
+												constantBuffer->writeUniformHandle(type|fragmentBit, uint32_t(uniform->offset() ), uniformIt->second, uint16_t(num) );
+												BX_TRACE("store %s %d offset:%d", name, uniformIt->second.idx, uint32_t(uniform->offset() ) );
 											}
 										}
 									}
@@ -2974,6 +3085,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 			, ProgramHandle _program
 			, uint8_t _numInstanceData
 			, uint32_t _sampleMask = UINT32_MAX
+			, uint8_t _colorAttachmentMask = UINT8_MAX
 			)
 		{
 			_state &= (0
@@ -2997,6 +3109,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 			&&  m_lastPsoState.m_fbh             == _fbh.idx
 			&&  m_lastPsoState.m_numStreams      == _numStreams
 			&&  m_lastPsoState.m_numInstanceData == _numInstanceData
+			&&  m_lastPsoState.m_colorAttachmentMask == _colorAttachmentMask
 			&&  m_lastPsoState.m_sampleMask      == _sampleMask)
 			{
 				bool match = true;
@@ -3017,6 +3130,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 			m_lastPsoState.m_fbh             = _fbh.idx;
 			m_lastPsoState.m_numStreams      = _numStreams;
 			m_lastPsoState.m_numInstanceData = _numInstanceData;
+			m_lastPsoState.m_colorAttachmentMask = _colorAttachmentMask;
 			m_lastPsoState.m_sampleMask      = _sampleMask;
 			for (uint8_t ii = 0; ii < _numStreams; ++ii)
 			{
@@ -3031,6 +3145,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 			murmur.add(rgba);
 			murmur.add(_numInstanceData);
 			murmur.add(_sampleMask);
+			murmur.add(_colorAttachmentMask);
 
 			if (!isValid(_fbh) )
 			{
@@ -3169,7 +3284,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 					drt->setDestinationAlphaBlendFactor( (MTL::BlendFactor)s_blendFactor[dstA][1]);
 					drt->setAlphaBlendOperation(        (MTL::BlendOperation)s_blendEquation[equA]);
 
-					drt->setWriteMask(writeMask);
+					drt->setWriteMask(0 != (_colorAttachmentMask & (1 << ii)) ? writeMask : MTL::ColorWriteMaskNone);
 				}
 
 				if (independentBlendEnable)
@@ -3192,7 +3307,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 						drt->setDestinationAlphaBlendFactor( (MTL::BlendFactor)s_blendFactor[dst][1]);
 						drt->setAlphaBlendOperation(        (MTL::BlendOperation)s_blendEquation[equationIndex]);
 
-						drt->setWriteMask(writeMask);
+						drt->setWriteMask(0 != (_colorAttachmentMask & (1 << ii)) ? writeMask : MTL::ColorWriteMaskNone);
 					}
 				}
 
@@ -3331,11 +3446,11 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 					{
 						if (m_usesMTLBindings)
 						{
-							processArguments(pso, reflection->vertexBindings(), reflection->fragmentBindings() );
+							processArguments(pso, program, reflection->vertexBindings(), reflection->fragmentBindings() );
 						}
 						else
 						{
-							processArguments(pso, reflection->vertexArguments(), reflection->fragmentArguments() );
+							processArguments(pso, program, reflection->vertexArguments(), reflection->fragmentArguments() );
 						}
 					}
 				}
@@ -3387,11 +3502,11 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 
 				if (m_usesMTLBindings)
 				{
-					processArguments(pso, reflection->bindings(), NULL);
+					processArguments(pso, program, reflection->bindings(), NULL);
 				}
 				else
 				{
-					processArguments(pso, reflection->arguments(), NULL);
+					processArguments(pso, program, reflection->arguments(), NULL);
 				}
 
 				for (uint32_t ii = 0; ii < 3; ++ii)
@@ -3451,6 +3566,13 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 
 		MTL::SamplerState* getSamplerState(uint32_t _flags)
 		{
+			// Anisotropy is renderer state, including for offscreen and explicit-window targets.
+			// Key the cache by the effective flags so reset changes cannot reuse a stale sampler.
+			if (1 == m_maxAnisotropy)
+			{
+				_flags &= ~(BGFX_SAMPLER_MIN_ANISOTROPIC|BGFX_SAMPLER_MAG_ANISOTROPIC|BGFX_SAMPLER_MAX_ANISOTROPY_MASK);
+			}
+
 			const uint32_t index = bx::min<uint32_t>(
 				  BGFX_CONFIG_MAX_COLOR_PALETTE-1
 				, (_flags & BGFX_SAMPLER_BORDER_COLOR_MASK) >> BGFX_SAMPLER_BORDER_COLOR_SHIFT
@@ -3489,12 +3611,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 				desc->setLodMaxClamp(FLT_MAX);
 				desc->setNormalizedCoordinates(TRUE);
 				desc->setBorderColor(borderColor);
-				desc->setMaxAnisotropy(true
-					&& NULL != m_mainFrameBuffer.m_swapChain
-					&& (0 != (_flags & (BGFX_SAMPLER_MIN_ANISOTROPIC|BGFX_SAMPLER_MAG_ANISOTROPIC) ) )
-						? m_mainFrameBuffer.m_swapChain->m_maxAnisotropy
-						: 1
-					);
+				desc->setMaxAnisotropy(getSamplerMaxAnisotropy(_flags, m_maxAnisotropy) );
 
 				const uint32_t cmpFunc = (_flags&BGFX_SAMPLER_COMPARE_MASK)>>BGFX_SAMPLER_COMPARE_SHIFT;
 				desc->setCompareFunction(0 == cmpFunc
@@ -3675,6 +3792,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 			uint16_t            m_fbh;
 			uint8_t             m_numStreams;
 			uint8_t             m_numInstanceData;
+			uint8_t             m_colorAttachmentMask;
 		};
 
 		PipelineState m_lastPsoState;
@@ -3691,6 +3809,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 
 		SwapChain m_mainSwapChain;
 		uint32_t  m_reset;
+		uint32_t  m_maxAnisotropy;
 		void* m_capture;
 		uint32_t m_captureSize;
 
@@ -3711,6 +3830,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 		ShaderMtl                 m_screenshotBlitProgramFsh;
 		ProgramMtl                m_screenshotBlitProgram;
 		MTL::RenderPipelineState* m_screenshotBlitRenderPipelineState;
+		MTL::PixelFormat          m_screenshotBlitPixelFormat = MTL::PixelFormatInvalid;
 
 		MTL::CommandBuffer*         m_commandBuffer;
 		MTL::BlitCommandEncoder*    m_blitCommandEncoder;
@@ -3841,6 +3961,14 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 			char name[256];
 			bx::read(&reader, &name, nameSize, &err);
 			name[nameSize] = '\0';
+
+			// Reflection is deferred until pipeline creation; the global registry may
+			// already contain a new uniform with this name after a program is recreated.
+			const UniformRegInfo* info = s_renderMtl->m_uniformReg.find(name);
+			if (NULL != info)
+			{
+				m_uniforms[bx::hash<bx::HashMurmur2A>(static_cast<const char*>(name) )] = info->m_handle;
+			}
 
 			uint8_t type;
 			bx::read(&reader, type, &err);
@@ -4142,8 +4270,6 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 
 	void TextureMtl::create(const Memory* _mem, uint64_t _flags, uint8_t _skip, uint64_t _external)
 	{
-		m_sampler = s_renderMtl->getSamplerState(uint32_t(_flags) );
-
 		bimg::ImageContainer imageContainer;
 
 		if (bimg::imageParse(imageContainer, _mem->data, _mem->size) )
@@ -4444,7 +4570,15 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 								;
 						}
 
-						m_ptr->replaceRegion(region, lod, side, data, bytesPerRow, bytesPerImage);
+						if (bimg::isDepth(bimg::TextureFormat::Enum(m_textureFormat) ) )
+						{
+							const Rect rect = { 0, 0, uint16_t(width), uint16_t(height) };
+							s_renderMtl->updateTextureDepth(*this, side, lod, rect, data, bytesPerRow);
+						}
+						else
+						{
+							m_ptr->replaceRegion(region, lod, side, data, bytesPerRow, bytesPerImage);
+						}
 					}
 
 					width  >>= 1;
@@ -4531,6 +4665,13 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 		const uint32_t mipHeight = bx::max(1u, uint32_t(m_height) >> _mip);
 		const uint32_t width     = bx::min<uint32_t>(_rect.m_width,  mipWidth);
 		const uint32_t height    = bx::min<uint32_t>(_rect.m_height, mipHeight);
+
+		if (bimg::isDepth(bimg::TextureFormat::Enum(m_textureFormat) ) )
+		{
+			const Rect rect = { _rect.m_x, _rect.m_y, uint16_t(width), uint16_t(height) };
+			s_renderMtl->updateTextureDepth(*this, uint16_t(slice), _mip, rect, _mem->data, srcpitch);
+			return;
+		}
 
 		const bool convert = m_textureFormat != m_requestedFormat;
 
@@ -4625,6 +4766,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 			: uint32_t(m_flags)
 			;
 		const bool sampleStencil = 0 != (flags & BGFX_SAMPLER_SAMPLE_STENCIL);
+		MTL::SamplerState* sampler = s_renderMtl->getSamplerState(flags);
 
 		MTL::Texture* ptr = _mip != UINT8_MAX
 			? getTextureImage(_mip, _firstLayer, _numLayers)
@@ -4635,9 +4777,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 		{
 			s_renderMtl->m_renderCommandEncoder->setVertexTexture(ptr, _stage);
 			s_renderMtl->m_renderCommandEncoder->setVertexSamplerState(
-				  0 == (BGFX_SAMPLER_INTERNAL_DEFAULT & _flags)
-					? s_renderMtl->getSamplerState(_flags)
-					: m_sampler
+				  sampler
 				, _stage
 				);
 		}
@@ -4646,9 +4786,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 		{
 			s_renderMtl->m_renderCommandEncoder->setFragmentTexture(ptr, _stage);
 			s_renderMtl->m_renderCommandEncoder->setFragmentSamplerState(
-				  0 == (BGFX_SAMPLER_INTERNAL_DEFAULT & _flags)
-					? s_renderMtl->getSamplerState(_flags)
-					: m_sampler
+				  sampler
 				, _stage
 				);
 		}
@@ -4726,7 +4864,13 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 			&& numLayers >= totalLayers
 			;
 
+		const bool swizzleDepth = !_stencil
+			&& bimg::isDepth(bimg::TextureFormat::Enum(m_textureFormat) )
+			&& TextureFormat::D0S8 != m_textureFormat
+			;
+
 		if (fullRange
+		&&  !swizzleDepth
 		&&  format == ptr->pixelFormat() )
 		{
 			return ptr;
@@ -4768,7 +4912,21 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 			type = (MTL::TextureType)MTL::TextureType2D;
 		}
 
-		MTL::Texture* view = ptr->newTextureView(
+		// Keep render-target storage unswizzled; depth-as-color reads use (R, 0, 0, 1).
+		MTL::Texture* view = swizzleDepth
+			? ptr->newTextureView(
+				  format
+				, type
+				, NS::Range::Make(firstMip, numMips)
+				, NS::Range::Make(firstLayer, numLayers)
+				, MTL::TextureSwizzleChannels::Make(
+					  MTL::TextureSwizzleRed
+					, MTL::TextureSwizzleZero
+					, MTL::TextureSwizzleZero
+					, MTL::TextureSwizzleOne
+					)
+				)
+			: ptr->newTextureView(
 			  format
 			, type
 			, NS::Range::Make(firstMip, numMips)
@@ -6018,17 +6176,19 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 				continue;
 			}
 
-			const uint16_t fbhIdx = 0 == ii ? kInvalidHandle : m_windows[ii].idx;
+			// Headless initialization has no primary swapchain; slot 0 can hold a valid framebuffer.
+			const uint16_t fbhIdx = m_windows[ii].idx;
+			const bool isMainWindow = !isValid(m_windows[ii]);
 
-			bool needScreenshot = 0 == ii && NULL != m_capture;
+			bool needScreenshot = isMainWindow && NULL != m_capture;
 
 			for (uint8_t jj = 0, numShots = _render->m_numScreenShots; jj < numShots && !needScreenshot; ++jj)
 			{
 				needScreenshot = _render->m_screenShot[jj].handle.idx == fbhIdx;
 			}
 
-			const uint32_t width  = 0 == ii ? m_mainSwapChain.width  : frameBuffer.m_width;
-			const uint32_t height = 0 == ii ? m_mainSwapChain.height : frameBuffer.m_height;
+			const uint32_t width  = isMainWindow ? m_mainSwapChain.width  : frameBuffer.m_width;
+			const uint32_t height = isMainWindow ? m_mainSwapChain.height : frameBuffer.m_height;
 
 			if (needScreenshot)
 			{
@@ -6279,7 +6439,9 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 
 									if (desc->texture() != NULL)
 									{
-										if (0 != (BGFX_CLEAR_COLOR & clr.m_flags) )
+										if (0 != (BGFX_CLEAR_COLOR & clr.m_flags)
+										&&  (0 == (BGFX_CLEAR_COLOR_USE_PALETTE & clr.m_flags)
+										 || UINT8_MAX != clr.m_index[ii]) )
 										{
 											if (0 != (BGFX_CLEAR_COLOR_USE_PALETTE & clr.m_flags) )
 											{
@@ -6533,9 +6695,7 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 										, stage
 										);
 									m_computeCommandEncoder->setSamplerState(
-										0 == (BGFX_SAMPLER_INTERNAL_DEFAULT & flags)
-										? getSamplerState(flags)
-										: texture.m_sampler
+										  getSamplerState(resolvedFlags)
 										, stage
 										);
 								}
@@ -7342,6 +7502,19 @@ static_assert(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNames
 
 			rce->setCullMode( (MTL::CullMode)MTL::CullModeNone);
 
+			// Headless initialization has no primary swapchain; use this window's format.
+			const MTL::PixelFormat pixelFormat = swapChain->currentDrawableTexture()->pixelFormat();
+			if (NULL == m_screenshotBlitRenderPipelineState
+			||  m_screenshotBlitPixelFormat != pixelFormat)
+			{
+				MTL_RELEASE_I(m_screenshotBlitRenderPipelineState);
+				reset(m_renderPipelineDescriptor);
+				m_renderPipelineDescriptor->colorAttachments()->object(0)->setPixelFormat(pixelFormat);
+				m_renderPipelineDescriptor->setVertexFunction(m_screenshotBlitProgram.m_vsh->m_function);
+				m_renderPipelineDescriptor->setFragmentFunction(m_screenshotBlitProgram.m_fsh->m_function);
+				m_screenshotBlitRenderPipelineState = newRenderPipelineStateWithDescriptor(m_device, m_renderPipelineDescriptor);
+				m_screenshotBlitPixelFormat = pixelFormat;
+			}
 			rce->setRenderPipelineState(m_screenshotBlitRenderPipelineState);
 
 			const MTL::SamplerState* samplerState = getSamplerState(0

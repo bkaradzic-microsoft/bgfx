@@ -357,6 +357,12 @@
 #define BGFX_SAMPLER_MIP_SHIFT                    10
 #define BGFX_SAMPLER_MIP_MASK                     UINT32_C(0x00000400)
 
+#define BGFX_SAMPLER_MAX_ANISOTROPY_SHIFT          12
+#define BGFX_SAMPLER_MAX_ANISOTROPY_MASK           UINT32_C(0x0000f000)
+/// Limit anisotropic filtering to 2..16 samples. Unset uses the renderer's maximum.
+/// Disable anisotropic min/mag filtering for 1x sampling.
+#define BGFX_SAMPLER_MAX_ANISOTROPY(v) ( ( (uint32_t)((v)-1)<<BGFX_SAMPLER_MAX_ANISOTROPY_SHIFT )&BGFX_SAMPLER_MAX_ANISOTROPY_MASK)
+
 #define BGFX_SAMPLER_COMPARE_LESS                 UINT32_C(0x00010000) //!< Compare when sampling depth texture: less.
 #define BGFX_SAMPLER_COMPARE_LEQUAL               UINT32_C(0x00020000) //!< Compare when sampling depth texture: less or equal.
 #define BGFX_SAMPLER_COMPARE_EQUAL                UINT32_C(0x00030000) //!< Compare when sampling depth texture: equal.
@@ -416,6 +422,7 @@
 	| BGFX_SAMPLER_MAG_MASK \
 	| BGFX_SAMPLER_MIP_MASK \
 	| BGFX_SAMPLER_NO_MIPS \
+	| BGFX_SAMPLER_MAX_ANISOTROPY_MASK \
 	| BGFX_SAMPLER_COMPARE_MASK \
 	)
 

@@ -5059,7 +5059,7 @@ WGPU_IMPORT
 				.lodMinClamp   = 0,
 				.lodMaxClamp   = noMips ? (anisotropic ? 0.0f : 0.25f) : bx::kFloatLargest,
 				.compare       = 0 == cmpFunc ? WGPUCompareFunction_Undefined : s_cmpFunc[cmpFunc],
-				.maxAnisotropy = anisotropic ? s_renderWGPU->m_maxAnisotropy : uint16_t(1),
+				.maxAnisotropy = anisotropic ? getSamplerMaxAnisotropy(samplerFlags, s_renderWGPU->m_maxAnisotropy) : uint16_t(1),
 			};
 
 			sampler = WGPU_CHECK(wgpuDeviceCreateSampler(s_renderWGPU->m_device, &samplerDesc) );

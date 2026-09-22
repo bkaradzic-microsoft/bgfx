@@ -4036,7 +4036,7 @@ VK_IMPORT_DEVICE
 			sci.addressModeW     = s_textureAddress[(_flags&BGFX_SAMPLER_W_MASK)>>BGFX_SAMPLER_W_SHIFT];
 			sci.mipLodBias       = lodBias;
 			sci.anisotropyEnable = !!(_flags & (BGFX_SAMPLER_MIN_ANISOTROPIC | BGFX_SAMPLER_MAG_ANISOTROPIC) );
-			sci.maxAnisotropy    = m_maxAnisotropy;
+			sci.maxAnisotropy    = getSamplerMaxAnisotropy(_flags, m_maxAnisotropy);
 			sci.compareEnable    = 0 != cmpFunc;
 			sci.compareOp        = s_cmpFunc[cmpFunc];
 			sci.minLod           = 0.0f;

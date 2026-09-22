@@ -312,16 +312,19 @@ namespace bgfx { namespace mtl
 			}
 
 			m_functions.clear();
+			m_uniforms.clear();
 			m_function = NULL;
 
 			MTL_RELEASE_W(m_lib, 0);
 		}
 
 		typedef stl::unordered_map<uint32_t, MTL::Function*> FunctionMap;
+		typedef stl::unordered_map<uint32_t, UniformHandle> UniformMap;
 
 		MTL::Library*  m_lib;
 		MTL::Function* m_function;
 		mutable FunctionMap m_functions;
+		UniformMap m_uniforms;
 		uint32_t m_hash;
 		uint16_t m_numThreads[3];
 	};
@@ -437,7 +440,6 @@ namespace bgfx { namespace mtl
 			, m_ptrStencil(NULL)
 			, m_ptrAlt(NULL)
 			, m_ptrMsaaAlt(NULL)
-			, m_sampler(NULL)
 			, m_videoDecoder(NULL)
 			, m_flags(0)
 			, m_width(0)
@@ -485,7 +487,6 @@ namespace bgfx { namespace mtl
 		MTL::Texture* m_ptrAlt;
 		MTL::Texture* m_ptrMsaaAlt;
 		stl::unordered_map<uint64_t, MTL::Texture*> m_ptrViews;
-		MTL::SamplerState* m_sampler;
 		VideoDecoderMtl*   m_videoDecoder;
 		uint64_t m_flags;
 		uint32_t m_width;
@@ -509,7 +510,6 @@ namespace bgfx { namespace mtl
 			, m_backBufferColorMsaa()
 			, m_backBufferDepth()
 			, m_backBufferStencil()
-			, m_maxAnisotropy(0)
 			, m_colorFormat(TextureFormat::Count)
 			, m_borrowedDepth(false)
 		{
@@ -535,7 +535,6 @@ namespace bgfx { namespace mtl
 		MTL::Texture* m_backBufferDepth;
 		MTL::Texture* m_backBufferStencil;
 
-		uint32_t m_maxAnisotropy;
 		void* m_nwh;
 		TextureFormat::Enum m_colorFormat;
 		bool m_borrowedDepth;

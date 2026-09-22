@@ -5171,7 +5171,7 @@ namespace bgfx { namespace d3d12
 			sd.AddressV = s_textureAddress[(flags&BGFX_SAMPLER_V_MASK)>>BGFX_SAMPLER_V_SHIFT];
 			sd.AddressW = s_textureAddress[(flags&BGFX_SAMPLER_W_MASK)>>BGFX_SAMPLER_W_SHIFT];
 			sd.MipLODBias     = float(BGFX_CONFIG_MIP_LOD_BIAS);
-			sd.MaxAnisotropy  = maxAnisotropy;
+			sd.MaxAnisotropy  = getSamplerMaxAnisotropy(flags, maxAnisotropy);
 			sd.ComparisonFunc = 0 == cmpFunc ? D3D12_COMPARISON_FUNC_NEVER : s_cmpFunc[cmpFunc];
 
 			uint32_t index = (flags & BGFX_SAMPLER_BORDER_COLOR_MASK) >> BGFX_SAMPLER_BORDER_COLOR_SHIFT;
