@@ -7,6 +7,7 @@
 
 #if (BGFX_CONFIG_RENDERER_OPENGLES || BGFX_CONFIG_RENDERER_OPENGL)
 #	include "renderer_gl.h"
+#	include <bx/pixelformat.h>
 #	include <bx/timer.h>
 #	include <bx/scanner.h>
 #	include "emscripten.h"
@@ -72,6 +73,44 @@ namespace bgfx { namespace gl
 		"a_texcoord15",
 	};
 	static_assert(Attrib::Count == BX_COUNTOF(s_attribName) );
+
+	struct AttribDefault
+	{
+		uint8_t          m_num;
+		AttribType::Enum m_type;
+		bool             m_normalized;
+	};
+
+	static const AttribDefault s_attribDefault[] =
+	{
+		{ 3, AttribType::Float, false }, // Position
+		{ 3, AttribType::Float, false }, // Normal
+		{ 3, AttribType::Float, false }, // Tangent
+		{ 3, AttribType::Float, false }, // Bitangent
+		{ 4, AttribType::Uint8, false }, // Color0
+		{ 4, AttribType::Uint8, false }, // Color1
+		{ 4, AttribType::Uint8, false }, // Color2
+		{ 4, AttribType::Uint8, false }, // Color3
+		{ 4, AttribType::Uint8, false }, // Indices
+		{ 3, AttribType::Float, false }, // Weight
+		{ 2, AttribType::Float, false }, // TexCoord0
+		{ 2, AttribType::Float, false }, // TexCoord1
+		{ 2, AttribType::Float, false }, // TexCoord2
+		{ 2, AttribType::Float, false }, // TexCoord3
+		{ 2, AttribType::Float, false }, // TexCoord4
+		{ 2, AttribType::Float, false }, // TexCoord5
+		{ 2, AttribType::Float, false }, // TexCoord6
+		{ 2, AttribType::Float, false }, // TexCoord7
+		{ 2, AttribType::Float, false }, // TexCoord8
+		{ 2, AttribType::Float, false }, // TexCoord9
+		{ 2, AttribType::Float, false }, // TexCoord10
+		{ 2, AttribType::Float, false }, // TexCoord11
+		{ 2, AttribType::Float, false }, // TexCoord12
+		{ 2, AttribType::Float, false }, // TexCoord13
+		{ 2, AttribType::Float, false }, // TexCoord14
+		{ 2, AttribType::Float, false }, // TexCoord15
+	};
+	static_assert(Attrib::Count == BX_COUNTOF(s_attribDefault) );
 
 	static const char* s_instanceDataName[] =
 	{
@@ -231,111 +270,111 @@ namespace bgfx { namespace gl
 #define $G GL_GREEN
 #define $B GL_BLUE
 #define $A GL_ALPHA
-		{ GL_COMPRESSED_RGBA_S3TC_DXT1_EXT,            GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT,       GL_COMPRESSED_RGBA_S3TC_DXT1_EXT,            GL_COMPRESSED_RGBA_S3TC_DXT1_EXT,            GL_ZERO,                         false, { $_, $_, $_, $_ } }, // BC1
-		{ GL_COMPRESSED_RGBA_S3TC_DXT3_EXT,            GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT,       GL_COMPRESSED_RGBA_S3TC_DXT3_EXT,            GL_COMPRESSED_RGBA_S3TC_DXT3_EXT,            GL_ZERO,                         false, { $_, $_, $_, $_ } }, // BC2
-		{ GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,            GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT,       GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,            GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,            GL_ZERO,                         false, { $_, $_, $_, $_ } }, // BC3
-		{ GL_COMPRESSED_LUMINANCE_LATC1_EXT,           GL_ZERO,                                      GL_COMPRESSED_LUMINANCE_LATC1_EXT,           GL_COMPRESSED_LUMINANCE_LATC1_EXT,           GL_ZERO,                         false, { $_, $_, $_, $_ } }, // BC4
-		{ GL_COMPRESSED_SIGNED_LUMINANCE_LATC1_EXT,    GL_ZERO,                                      GL_COMPRESSED_SIGNED_LUMINANCE_LATC1_EXT,    GL_COMPRESSED_SIGNED_LUMINANCE_LATC1_EXT,    GL_ZERO,                         false, { $_, $_, $_, $_ } }, // BC4S
-		{ GL_COMPRESSED_LUMINANCE_ALPHA_LATC2_EXT,     GL_ZERO,                                      GL_COMPRESSED_LUMINANCE_ALPHA_LATC2_EXT,     GL_COMPRESSED_LUMINANCE_ALPHA_LATC2_EXT,     GL_ZERO,                         false, { $_, $_, $_, $_ } }, // BC5
-		{ GL_COMPRESSED_SIGNED_LUMINANCE_ALPHA_LATC2_EXT, GL_ZERO,                                   GL_COMPRESSED_SIGNED_LUMINANCE_ALPHA_LATC2_EXT, GL_COMPRESSED_SIGNED_LUMINANCE_ALPHA_LATC2_EXT, GL_ZERO,                         false, { $_, $_, $_, $_ } }, // BC5S
-		{ GL_COMPRESSED_RGB_BPTC_SIGNED_FLOAT_ARB,     GL_ZERO,                                      GL_COMPRESSED_RGB_BPTC_SIGNED_FLOAT_ARB,     GL_COMPRESSED_RGB_BPTC_SIGNED_FLOAT_ARB,     GL_ZERO,                         false, { $_, $_, $_, $_ } }, // BC6H
-		{ GL_COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT_ARB,   GL_ZERO,                                      GL_COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT_ARB,   GL_COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT_ARB,   GL_ZERO,                         false, { $_, $_, $_, $_ } }, // BC6HU
-		{ GL_COMPRESSED_RGBA_BPTC_UNORM_ARB,           GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM_ARB,      GL_COMPRESSED_RGBA_BPTC_UNORM_ARB,           GL_COMPRESSED_RGBA_BPTC_UNORM_ARB,           GL_ZERO,                         false, { $_, $_, $_, $_ } }, // BC7
-		{ GL_ETC1_RGB8_OES,                            GL_ZERO,                                      GL_ETC1_RGB8_OES,                            GL_ETC1_RGB8_OES,                            GL_ZERO,                         false, { $_, $_, $_, $_ } }, // ETC1
-		{ GL_COMPRESSED_RGB8_ETC2,                     GL_COMPRESSED_SRGB8_ETC2,                     GL_COMPRESSED_RGB8_ETC2,                     GL_COMPRESSED_RGB8_ETC2,                     GL_ZERO,                         false, { $_, $_, $_, $_ } }, // ETC2
-		{ GL_COMPRESSED_RGBA8_ETC2_EAC,                GL_COMPRESSED_SRGB8_ALPHA8_ETC2_EAC,          GL_COMPRESSED_RGBA8_ETC2_EAC,                GL_COMPRESSED_RGBA8_ETC2_EAC,                GL_ZERO,                         false, { $_, $_, $_, $_ } }, // ETC2A
-		{ GL_COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2, GL_COMPRESSED_SRGB8_PUNCHTHROUGH_ALPHA1_ETC2, GL_COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2, GL_COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2, GL_ZERO,                         false, { $_, $_, $_, $_ } }, // ETC2A1
-		{ GL_COMPRESSED_R11_EAC,                       GL_ZERO,                                      GL_COMPRESSED_R11_EAC,                       GL_COMPRESSED_R11_EAC,                       GL_ZERO,                         false, { $_, $_, $_, $_ } }, // EACR11 UNORM
-		{ GL_COMPRESSED_SIGNED_R11_EAC,                GL_ZERO,                                      GL_COMPRESSED_SIGNED_R11_EAC,                GL_COMPRESSED_SIGNED_R11_EAC,                GL_ZERO,                         false, { $_, $_, $_, $_ } }, // EACR11 SNORM
-		{ GL_COMPRESSED_RG11_EAC,                      GL_ZERO,                                      GL_COMPRESSED_RG11_EAC,                      GL_COMPRESSED_RG11_EAC,                      GL_ZERO,                         false, { $_, $_, $_, $_ } }, // EACRG11 UNORM
-		{ GL_COMPRESSED_SIGNED_RG11_EAC,               GL_ZERO,                                      GL_COMPRESSED_SIGNED_RG11_EAC,               GL_COMPRESSED_SIGNED_RG11_EAC,               GL_ZERO,                         false, { $_, $_, $_, $_ } }, // EACRG11 SNORM
-		{ GL_COMPRESSED_RGB_PVRTC_2BPPV1_IMG,          GL_COMPRESSED_SRGB_PVRTC_2BPPV1_EXT,          GL_COMPRESSED_RGB_PVRTC_2BPPV1_IMG,          GL_COMPRESSED_RGB_PVRTC_2BPPV1_IMG,          GL_ZERO,                         false, { $_, $_, $_, $_ } }, // PTC12
-		{ GL_COMPRESSED_RGB_PVRTC_4BPPV1_IMG,          GL_COMPRESSED_SRGB_PVRTC_4BPPV1_EXT,          GL_COMPRESSED_RGB_PVRTC_4BPPV1_IMG,          GL_COMPRESSED_RGB_PVRTC_4BPPV1_IMG,          GL_ZERO,                         false, { $_, $_, $_, $_ } }, // PTC14
-		{ GL_COMPRESSED_RGBA_PVRTC_2BPPV1_IMG,         GL_COMPRESSED_SRGB_ALPHA_PVRTC_2BPPV1_EXT,    GL_COMPRESSED_RGBA_PVRTC_2BPPV1_IMG,         GL_COMPRESSED_RGBA_PVRTC_2BPPV1_IMG,         GL_ZERO,                         false, { $_, $_, $_, $_ } }, // PTC12A
-		{ GL_COMPRESSED_RGBA_PVRTC_4BPPV1_IMG,         GL_COMPRESSED_SRGB_ALPHA_PVRTC_4BPPV1_EXT,    GL_COMPRESSED_RGBA_PVRTC_4BPPV1_IMG,         GL_COMPRESSED_RGBA_PVRTC_4BPPV1_IMG,         GL_ZERO,                         false, { $_, $_, $_, $_ } }, // PTC14A
-		{ GL_COMPRESSED_RGBA_PVRTC_2BPPV2_IMG,         GL_ZERO,                                      GL_COMPRESSED_RGBA_PVRTC_2BPPV2_IMG,         GL_COMPRESSED_RGBA_PVRTC_2BPPV2_IMG,         GL_ZERO,                         false, { $_, $_, $_, $_ } }, // PTC22
-		{ GL_COMPRESSED_RGBA_PVRTC_4BPPV2_IMG,         GL_ZERO,                                      GL_COMPRESSED_RGBA_PVRTC_4BPPV2_IMG,         GL_COMPRESSED_RGBA_PVRTC_4BPPV2_IMG,         GL_ZERO,                         false, { $_, $_, $_, $_ } }, // PTC24
-		{ GL_ATC_RGB_AMD,                              GL_ZERO,                                      GL_ATC_RGB_AMD,                              GL_ATC_RGB_AMD,                              GL_ZERO,                         false, { $_, $_, $_, $_ } }, // ATC
-		{ GL_ATC_RGBA_EXPLICIT_ALPHA_AMD,              GL_ZERO,                                      GL_ATC_RGBA_EXPLICIT_ALPHA_AMD,              GL_ATC_RGBA_EXPLICIT_ALPHA_AMD,              GL_ZERO,                         false, { $_, $_, $_, $_ } }, // ATCE
-		{ GL_ATC_RGBA_INTERPOLATED_ALPHA_AMD,          GL_ZERO,                                      GL_ATC_RGBA_INTERPOLATED_ALPHA_AMD,          GL_ATC_RGBA_INTERPOLATED_ALPHA_AMD,          GL_ZERO,                         false, { $_, $_, $_, $_ } }, // ATCI
-		{ GL_COMPRESSED_RGBA_ASTC_4x4_KHR,             GL_COMPRESSED_SRGB8_ASTC_4x4_KHR,             GL_COMPRESSED_RGBA_ASTC_4x4_KHR,             GL_COMPRESSED_RGBA_ASTC_4x4_KHR,             GL_ZERO,                         false, { $_, $_, $_, $_ } }, // ASTC4x4
-		{ GL_COMPRESSED_RGBA_ASTC_5x4_KHR,             GL_COMPRESSED_SRGB8_ASTC_5x4_KHR,             GL_COMPRESSED_RGBA_ASTC_5x4_KHR,             GL_COMPRESSED_RGBA_ASTC_5x4_KHR,             GL_ZERO,                         false, { $_, $_, $_, $_ } }, // ASTC5x4
-		{ GL_COMPRESSED_RGBA_ASTC_5x5_KHR,             GL_COMPRESSED_SRGB8_ASTC_5x5_KHR,             GL_COMPRESSED_RGBA_ASTC_5x5_KHR,             GL_COMPRESSED_RGBA_ASTC_5x5_KHR,             GL_ZERO,                         false, { $_, $_, $_, $_ } }, // ASTC5x5
-		{ GL_COMPRESSED_RGBA_ASTC_6x5_KHR,             GL_COMPRESSED_SRGB8_ASTC_6x5_KHR,             GL_COMPRESSED_RGBA_ASTC_6x5_KHR,             GL_COMPRESSED_RGBA_ASTC_6x5_KHR,             GL_ZERO,                         false, { $_, $_, $_, $_ } }, // ASTC6x5
-		{ GL_COMPRESSED_RGBA_ASTC_6x6_KHR,             GL_COMPRESSED_SRGB8_ASTC_6x6_KHR,             GL_COMPRESSED_RGBA_ASTC_6x6_KHR,             GL_COMPRESSED_RGBA_ASTC_6x6_KHR,             GL_ZERO,                         false, { $_, $_, $_, $_ } }, // ASTC6x6
-		{ GL_COMPRESSED_RGBA_ASTC_8x5_KHR,             GL_COMPRESSED_SRGB8_ASTC_8x5_KHR,             GL_COMPRESSED_RGBA_ASTC_8x5_KHR,             GL_COMPRESSED_RGBA_ASTC_8x5_KHR,             GL_ZERO,                         false, { $_, $_, $_, $_ } }, // ASTC8x5
-		{ GL_COMPRESSED_RGBA_ASTC_8x6_KHR,             GL_COMPRESSED_SRGB8_ASTC_8x6_KHR,             GL_COMPRESSED_RGBA_ASTC_8x6_KHR,             GL_COMPRESSED_RGBA_ASTC_8x6_KHR,             GL_ZERO,                         false, { $_, $_, $_, $_ } }, // ASTC8x6
-		{ GL_COMPRESSED_RGBA_ASTC_8x8_KHR,             GL_COMPRESSED_SRGB8_ASTC_8x8_KHR,             GL_COMPRESSED_RGBA_ASTC_8x8_KHR,             GL_COMPRESSED_RGBA_ASTC_8x8_KHR,             GL_ZERO,                         false, { $_, $_, $_, $_ } }, // ASTC8x8
-		{ GL_COMPRESSED_RGBA_ASTC_10x5_KHR,            GL_COMPRESSED_SRGB8_ASTC_10x5_KHR,            GL_COMPRESSED_RGBA_ASTC_10x5_KHR,            GL_COMPRESSED_RGBA_ASTC_10x5_KHR,            GL_ZERO,                         false, { $_, $_, $_, $_ } }, // ASTC10x5
-		{ GL_COMPRESSED_RGBA_ASTC_10x6_KHR,            GL_COMPRESSED_SRGB8_ASTC_10x6_KHR,            GL_COMPRESSED_RGBA_ASTC_10x6_KHR,            GL_COMPRESSED_RGBA_ASTC_10x6_KHR,            GL_ZERO,                         false, { $_, $_, $_, $_ } }, // ASTC10x6
-		{ GL_COMPRESSED_RGBA_ASTC_10x8_KHR,            GL_COMPRESSED_SRGB8_ASTC_10x8_KHR,            GL_COMPRESSED_RGBA_ASTC_10x8_KHR,            GL_COMPRESSED_RGBA_ASTC_10x8_KHR,            GL_ZERO,                         false, { $_, $_, $_, $_ } }, // ASTC10x8
-		{ GL_COMPRESSED_RGBA_ASTC_10x10_KHR,           GL_COMPRESSED_SRGB8_ASTC_10x10_KHR,           GL_COMPRESSED_RGBA_ASTC_10x10_KHR,           GL_COMPRESSED_RGBA_ASTC_10x10_KHR,           GL_ZERO,                         false, { $_, $_, $_, $_ } }, // ASTC10x10
-		{ GL_COMPRESSED_RGBA_ASTC_12x10_KHR,           GL_COMPRESSED_SRGB8_ASTC_12x10_KHR,           GL_COMPRESSED_RGBA_ASTC_12x10_KHR,           GL_COMPRESSED_RGBA_ASTC_12x10_KHR,           GL_ZERO,                         false, { $_, $_, $_, $_ } }, // ASTC12x10
-		{ GL_COMPRESSED_RGBA_ASTC_12x12_KHR,           GL_COMPRESSED_SRGB8_ASTC_12x12_KHR,           GL_COMPRESSED_RGBA_ASTC_12x12_KHR,           GL_COMPRESSED_RGBA_ASTC_12x12_KHR,           GL_ZERO,                         false, { $_, $_, $_, $_ } }, // ASTC12x12
-		{ GL_ZERO,                                     GL_ZERO,                                      GL_ZERO,                                     GL_ZERO,                                     GL_ZERO,                         false, { $_, $_, $_, $_ } }, // Unknown
-		{ GL_ZERO,                                     GL_ZERO,                                      GL_ZERO,                                     GL_ZERO,                                     GL_ZERO,                         false, { $_, $_, $_, $_ } }, // R1
-		{ GL_ALPHA,                                    GL_ZERO,                                      GL_ALPHA,                                    GL_ALPHA,                                    GL_UNSIGNED_BYTE,                false, { $_, $_, $_, $_ } }, // A8
-		{ GL_R8,                                       GL_ZERO,                                      GL_RED,                                      GL_RED,                                      GL_UNSIGNED_BYTE,                false, { $_, $_, $_, $_ } }, // R8
-		{ GL_R8I,                                      GL_ZERO,                                      RED_INTEGER,                                 GL_RED_INTEGER,                              GL_BYTE,                         false, { $_, $_, $_, $_ } }, // R8I
-		{ GL_R8UI,                                     GL_ZERO,                                      RED_INTEGER,                                 GL_RED_INTEGER,                              GL_UNSIGNED_BYTE,                false, { $_, $_, $_, $_ } }, // R8U
-		{ GL_R8_SNORM,                                 GL_ZERO,                                      GL_RED,                                      GL_RED,                                      GL_BYTE,                         false, { $_, $_, $_, $_ } }, // R8S
-		{ GL_R16,                                      GL_ZERO,                                      GL_RED,                                      GL_RED,                                      GL_UNSIGNED_SHORT,               false, { $_, $_, $_, $_ } }, // R16
-		{ GL_R16I,                                     GL_ZERO,                                      RED_INTEGER,                                 GL_RED_INTEGER,                              GL_SHORT,                        false, { $_, $_, $_, $_ } }, // R16I
-		{ GL_R16UI,                                    GL_ZERO,                                      RED_INTEGER,                                 GL_RED_INTEGER,                              GL_UNSIGNED_SHORT,               false, { $_, $_, $_, $_ } }, // R16U
-		{ GL_R16F,                                     GL_ZERO,                                      GL_RED,                                      GL_RED,                                      GL_HALF_FLOAT,                   false, { $_, $_, $_, $_ } }, // R16F
-		{ GL_R16_SNORM,                                GL_ZERO,                                      GL_RED,                                      GL_RED,                                      GL_SHORT,                        false, { $_, $_, $_, $_ } }, // R16S
-		{ GL_R32I,                                     GL_ZERO,                                      RED_INTEGER,                                 GL_RED_INTEGER,                              GL_INT,                          false, { $_, $_, $_, $_ } }, // R32I
-		{ GL_R32UI,                                    GL_ZERO,                                      RED_INTEGER,                                 GL_RED_INTEGER,                              GL_UNSIGNED_INT,                 false, { $_, $_, $_, $_ } }, // R32U
-		{ GL_R32F,                                     GL_ZERO,                                      GL_RED,                                      GL_RED,                                      GL_FLOAT,                        false, { $_, $_, $_, $_ } }, // R32F
-		{ GL_RG8,                                      GL_ZERO,                                      GL_RG,                                       GL_RG,                                       GL_UNSIGNED_BYTE,                false, { $_, $_, $_, $_ } }, // RG8
-		{ GL_RG8I,                                     GL_ZERO,                                      RG_INTEGER,                                  GL_RG_INTEGER,                               GL_BYTE,                         false, { $_, $_, $_, $_ } }, // RG8I
-		{ GL_RG8UI,                                    GL_ZERO,                                      RG_INTEGER,                                  GL_RG_INTEGER,                               GL_UNSIGNED_BYTE,                false, { $_, $_, $_, $_ } }, // RG8U
-		{ GL_RG8_SNORM,                                GL_ZERO,                                      GL_RG,                                       GL_RG,                                       GL_BYTE,                         false, { $_, $_, $_, $_ } }, // RG8S
-		{ GL_RG16,                                     GL_ZERO,                                      GL_RG,                                       GL_RG,                                       GL_UNSIGNED_SHORT,               false, { $_, $_, $_, $_ } }, // RG16
-		{ GL_RG16I,                                    GL_ZERO,                                      RG_INTEGER,                                  GL_RG_INTEGER,                               GL_SHORT,                        false, { $_, $_, $_, $_ } }, // RG16I
-		{ GL_RG16UI,                                   GL_ZERO,                                      RG_INTEGER,                                  GL_RG_INTEGER,                               GL_UNSIGNED_SHORT,               false, { $_, $_, $_, $_ } }, // RG16U
-		{ GL_RG16F,                                    GL_ZERO,                                      GL_RG,                                       GL_RG,                                       GL_HALF_FLOAT,                   false, { $_, $_, $_, $_ } }, // RG16F
-		{ GL_RG16_SNORM,                               GL_ZERO,                                      GL_RG,                                       GL_RG,                                       GL_SHORT,                        false, { $_, $_, $_, $_ } }, // RG16S
-		{ GL_RG32I,                                    GL_ZERO,                                      RG_INTEGER,                                  GL_RG_INTEGER,                               GL_INT,                          false, { $_, $_, $_, $_ } }, // RG32I
-		{ GL_RG32UI,                                   GL_ZERO,                                      RG_INTEGER,                                  GL_RG_INTEGER,                               GL_UNSIGNED_INT,                 false, { $_, $_, $_, $_ } }, // RG32U
-		{ GL_RG32F,                                    GL_ZERO,                                      GL_RG,                                       GL_RG,                                       GL_FLOAT,                        false, { $_, $_, $_, $_ } }, // RG32F
-		{ GL_RGB8,                                     GL_SRGB8,                                     GL_RGB,                                      GL_RGB,                                      GL_UNSIGNED_BYTE,                false, { $_, $_, $_, $_ } }, // RGB8
-		{ GL_RGB8I,                                    GL_ZERO,                                      RGB_INTEGER,                                 GL_RGB_INTEGER,                              GL_BYTE,                         false, { $_, $_, $_, $_ } }, // RGB8I
-		{ GL_RGB8UI,                                   GL_ZERO,                                      RGB_INTEGER,                                 GL_RGB_INTEGER,                              GL_UNSIGNED_BYTE,                false, { $_, $_, $_, $_ } }, // RGB8U
-		{ GL_RGB8_SNORM,                               GL_ZERO,                                      GL_RGB,                                      GL_RGB,                                      GL_BYTE,                         false, { $_, $_, $_, $_ } }, // RGB8S
-		{ GL_RGB9_E5,                                  GL_ZERO,                                      GL_RGB,                                      GL_RGB,                                      GL_UNSIGNED_INT_5_9_9_9_REV,     false, { $_, $_, $_, $_ } }, // RGB9E5F
-		{ GL_RGBA8,                                    GL_SRGB8_ALPHA8,                              GL_BGRA,                                     GL_BGRA,                                     GL_UNSIGNED_BYTE,                false, { $_, $_, $_, $_ } }, // BGRA8
-		{ GL_RGBA8,                                    GL_SRGB8_ALPHA8,                              GL_RGBA,                                     GL_RGBA,                                     GL_UNSIGNED_BYTE,                false, { $_, $_, $_, $_ } }, // RGBA8
-		{ GL_RGBA8I,                                   GL_ZERO,                                      RGBA_INTEGER,                                GL_RGBA_INTEGER,                             GL_BYTE,                         false, { $_, $_, $_, $_ } }, // RGBA8I
-		{ GL_RGBA8UI,                                  GL_ZERO,                                      RGBA_INTEGER,                                GL_RGBA_INTEGER,                             GL_UNSIGNED_BYTE,                false, { $_, $_, $_, $_ } }, // RGBA8U
-		{ GL_RGBA8_SNORM,                              GL_ZERO,                                      GL_RGBA,                                     GL_RGBA,                                     GL_BYTE,                         false, { $_, $_, $_, $_ } }, // RGBA8S
-		{ GL_RGBA16,                                   GL_ZERO,                                      GL_RGBA,                                     GL_RGBA,                                     GL_UNSIGNED_SHORT,               false, { $_, $_, $_, $_ } }, // RGBA16
-		{ GL_RGBA16I,                                  GL_ZERO,                                      RGBA_INTEGER,                                GL_RGBA_INTEGER,                             GL_SHORT,                        false, { $_, $_, $_, $_ } }, // RGBA16I
-		{ GL_RGBA16UI,                                 GL_ZERO,                                      RGBA_INTEGER,                                GL_RGBA_INTEGER,                             GL_UNSIGNED_SHORT,               false, { $_, $_, $_, $_ } }, // RGBA16U
-		{ GL_RGBA16F,                                  GL_ZERO,                                      GL_RGBA,                                     GL_RGBA,                                     GL_HALF_FLOAT,                   false, { $_, $_, $_, $_ } }, // RGBA16F
-		{ GL_RGBA16_SNORM,                             GL_ZERO,                                      GL_RGBA,                                     GL_RGBA,                                     GL_SHORT,                        false, { $_, $_, $_, $_ } }, // RGBA16S
-		{ GL_RGBA32I,                                  GL_ZERO,                                      RGBA_INTEGER,                                GL_RGBA_INTEGER,                             GL_INT,                          false, { $_, $_, $_, $_ } }, // RGBA32I
-		{ GL_RGBA32UI,                                 GL_ZERO,                                      RGBA_INTEGER,                                GL_RGBA_INTEGER,                             GL_UNSIGNED_INT,                 false, { $_, $_, $_, $_ } }, // RGBA32U
-		{ GL_RGBA32F,                                  GL_ZERO,                                      GL_RGBA,                                     GL_RGBA,                                     GL_FLOAT,                        false, { $_, $_, $_, $_ } }, // RGBA32F
-		{ GL_RGB565,                                   GL_ZERO,                                      GL_RGB,                                      GL_RGB,                                      GL_UNSIGNED_SHORT_5_6_5,         false, { $_, $_, $_, $_ } }, // B5G6R5
-		{ GL_RGB565,                                   GL_ZERO,                                      GL_RGB,                                      GL_RGB,                                      GL_UNSIGNED_SHORT_5_6_5,         false, { $_, $_, $_, $_ } }, // R5G6B5
-		{ GL_RGBA4,                                    GL_ZERO,                                      GL_BGRA,                                     GL_BGRA,                                     GL_UNSIGNED_SHORT_4_4_4_4_REV,   false, { $_, $_, $_, $_ } }, // BGRA4
-		{ GL_RGBA4,                                    GL_ZERO,                                      GL_RGBA,                                     GL_RGBA,                                     GL_UNSIGNED_SHORT_4_4_4_4_REV,   false, { $_, $_, $_, $_ } }, // RGBA4
-		{ GL_RGB5_A1,                                  GL_ZERO,                                      GL_BGRA,                                     GL_BGRA,                                     GL_UNSIGNED_SHORT_1_5_5_5_REV,   false, { $_, $_, $_, $_ } }, // BGR5A1
-		{ GL_RGB5_A1,                                  GL_ZERO,                                      GL_RGBA,                                     GL_RGBA,                                     GL_UNSIGNED_SHORT_1_5_5_5_REV,   false, { $_, $_, $_, $_ } }, // RGB5A1
-		{ GL_RGB10_A2,                                 GL_ZERO,                                      GL_RGBA,                                     GL_RGBA,                                     GL_UNSIGNED_INT_2_10_10_10_REV,  false, { $_, $_, $_, $_ } }, // RGB10A2
-		{ GL_RGB10_A2UI,                               GL_ZERO,                                      GL_RGBA_INTEGER,                             GL_RGBA_INTEGER,                             GL_UNSIGNED_INT_2_10_10_10_REV,  false, { $_, $_, $_, $_ } }, // RGB10A2U
-		{ GL_R11F_G11F_B10F,                           GL_ZERO,                                      GL_RGB,                                      GL_RGB,                                      GL_UNSIGNED_INT_10F_11F_11F_REV, false, { $_, $_, $_, $_ } }, // RG11B10F
-		{ GL_ZERO,                                     GL_ZERO,                                      GL_ZERO,                                     GL_ZERO,                                     GL_ZERO,                         false, { $_, $_, $_, $_ } }, // UnknownDepth
-		{ GL_DEPTH_COMPONENT16,                        GL_ZERO,                                      GL_DEPTH_COMPONENT,                          GL_DEPTH_COMPONENT,                          GL_UNSIGNED_SHORT,               false, { $_, $_, $_, $_ } }, // D16
-		{ GL_DEPTH_COMPONENT24,                        GL_ZERO,                                      GL_DEPTH_COMPONENT,                          GL_DEPTH_COMPONENT,                          GL_UNSIGNED_INT,                 false, { $_, $_, $_, $_ } }, // D24
-		{ GL_DEPTH24_STENCIL8,                         GL_ZERO,                                      GL_DEPTH_STENCIL,                            GL_DEPTH_STENCIL,                            GL_UNSIGNED_INT_24_8,            false, { $_, $_, $_, $_ } }, // D24S8
-		{ GL_DEPTH_COMPONENT32,                        GL_ZERO,                                      GL_DEPTH_COMPONENT,                          GL_DEPTH_COMPONENT,                          GL_UNSIGNED_INT,                 false, { $_, $_, $_, $_ } }, // D32
-		{ GL_DEPTH_COMPONENT32F,                       GL_ZERO,                                      GL_DEPTH_COMPONENT,                          GL_DEPTH_COMPONENT,                          GL_FLOAT,                        false, { $_, $_, $_, $_ } }, // D16F
-		{ GL_DEPTH_COMPONENT32F,                       GL_ZERO,                                      GL_DEPTH_COMPONENT,                          GL_DEPTH_COMPONENT,                          GL_FLOAT,                        false, { $_, $_, $_, $_ } }, // D24F
-		{ GL_DEPTH_COMPONENT32F,                       GL_ZERO,                                      GL_DEPTH_COMPONENT,                          GL_DEPTH_COMPONENT,                          GL_FLOAT,                        false, { $_, $_, $_, $_ } }, // D32F
-		{ GL_DEPTH32F_STENCIL8,                        GL_ZERO,                                      GL_DEPTH_STENCIL,                            GL_DEPTH_STENCIL,                            GL_FLOAT_32_UNSIGNED_INT_24_8_REV, false, { $_, $_, $_, $_ } }, // D32FS8
-		{ GL_STENCIL_INDEX8,                           GL_ZERO,                                      GL_STENCIL_INDEX,                            GL_STENCIL_INDEX,                            GL_UNSIGNED_BYTE,                false, { $_, $_, $_, $_ } }, // D0S8
+		{ GL_COMPRESSED_RGBA_S3TC_DXT1_EXT,            GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT,       GL_COMPRESSED_RGBA_S3TC_DXT1_EXT,               GL_COMPRESSED_RGBA_S3TC_DXT1_EXT,               GL_ZERO,                           false, { $_, $_, $_, $_ } }, // BC1
+		{ GL_COMPRESSED_RGBA_S3TC_DXT3_EXT,            GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT,       GL_COMPRESSED_RGBA_S3TC_DXT3_EXT,               GL_COMPRESSED_RGBA_S3TC_DXT3_EXT,               GL_ZERO,                           false, { $_, $_, $_, $_ } }, // BC2
+		{ GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,            GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT,       GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,               GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,               GL_ZERO,                           false, { $_, $_, $_, $_ } }, // BC3
+		{ GL_COMPRESSED_LUMINANCE_LATC1_EXT,           GL_ZERO,                                      GL_COMPRESSED_LUMINANCE_LATC1_EXT,              GL_COMPRESSED_LUMINANCE_LATC1_EXT,              GL_ZERO,                           false, { $_, $_, $_, $_ } }, // BC4
+		{ GL_COMPRESSED_SIGNED_LUMINANCE_LATC1_EXT,    GL_ZERO,                                      GL_COMPRESSED_SIGNED_LUMINANCE_LATC1_EXT,       GL_COMPRESSED_SIGNED_LUMINANCE_LATC1_EXT,       GL_ZERO,                           false, { $_, $_, $_, $_ } }, // BC4S
+		{ GL_COMPRESSED_LUMINANCE_ALPHA_LATC2_EXT,     GL_ZERO,                                      GL_COMPRESSED_LUMINANCE_ALPHA_LATC2_EXT,        GL_COMPRESSED_LUMINANCE_ALPHA_LATC2_EXT,        GL_ZERO,                           false, { $_, $_, $_, $_ } }, // BC5
+		{ GL_COMPRESSED_SIGNED_LUMINANCE_ALPHA_LATC2_EXT, GL_ZERO,                                   GL_COMPRESSED_SIGNED_LUMINANCE_ALPHA_LATC2_EXT, GL_COMPRESSED_SIGNED_LUMINANCE_ALPHA_LATC2_EXT, GL_ZERO,                           false, { $_, $_, $_, $_ } }, // BC5S
+		{ GL_COMPRESSED_RGB_BPTC_SIGNED_FLOAT_ARB,     GL_ZERO,                                      GL_COMPRESSED_RGB_BPTC_SIGNED_FLOAT_ARB,        GL_COMPRESSED_RGB_BPTC_SIGNED_FLOAT_ARB,        GL_ZERO,                           false, { $_, $_, $_, $_ } }, // BC6H
+		{ GL_COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT_ARB,   GL_ZERO,                                      GL_COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT_ARB,      GL_COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT_ARB,      GL_ZERO,                           false, { $_, $_, $_, $_ } }, // BC6HU
+		{ GL_COMPRESSED_RGBA_BPTC_UNORM_ARB,           GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM_ARB,      GL_COMPRESSED_RGBA_BPTC_UNORM_ARB,              GL_COMPRESSED_RGBA_BPTC_UNORM_ARB,              GL_ZERO,                           false, { $_, $_, $_, $_ } }, // BC7
+		{ GL_ETC1_RGB8_OES,                            GL_ZERO,                                      GL_ETC1_RGB8_OES,                               GL_ETC1_RGB8_OES,                               GL_ZERO,                           false, { $_, $_, $_, $_ } }, // ETC1
+		{ GL_COMPRESSED_RGB8_ETC2,                     GL_COMPRESSED_SRGB8_ETC2,                     GL_COMPRESSED_RGB8_ETC2,                        GL_COMPRESSED_RGB8_ETC2,                        GL_ZERO,                           false, { $_, $_, $_, $_ } }, // ETC2
+		{ GL_COMPRESSED_RGBA8_ETC2_EAC,                GL_COMPRESSED_SRGB8_ALPHA8_ETC2_EAC,          GL_COMPRESSED_RGBA8_ETC2_EAC,                   GL_COMPRESSED_RGBA8_ETC2_EAC,                   GL_ZERO,                           false, { $_, $_, $_, $_ } }, // ETC2A
+		{ GL_COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2, GL_COMPRESSED_SRGB8_PUNCHTHROUGH_ALPHA1_ETC2, GL_COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2,    GL_COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2,    GL_ZERO,                           false, { $_, $_, $_, $_ } }, // ETC2A1
+		{ GL_COMPRESSED_R11_EAC,                       GL_ZERO,                                      GL_COMPRESSED_R11_EAC,                          GL_COMPRESSED_R11_EAC,                          GL_ZERO,                           false, { $_, $_, $_, $_ } }, // EACR11 UNORM
+		{ GL_COMPRESSED_SIGNED_R11_EAC,                GL_ZERO,                                      GL_COMPRESSED_SIGNED_R11_EAC,                   GL_COMPRESSED_SIGNED_R11_EAC,                   GL_ZERO,                           false, { $_, $_, $_, $_ } }, // EACR11 SNORM
+		{ GL_COMPRESSED_RG11_EAC,                      GL_ZERO,                                      GL_COMPRESSED_RG11_EAC,                         GL_COMPRESSED_RG11_EAC,                         GL_ZERO,                           false, { $_, $_, $_, $_ } }, // EACRG11 UNORM
+		{ GL_COMPRESSED_SIGNED_RG11_EAC,               GL_ZERO,                                      GL_COMPRESSED_SIGNED_RG11_EAC,                  GL_COMPRESSED_SIGNED_RG11_EAC,                  GL_ZERO,                           false, { $_, $_, $_, $_ } }, // EACRG11 SNORM
+		{ GL_COMPRESSED_RGB_PVRTC_2BPPV1_IMG,          GL_COMPRESSED_SRGB_PVRTC_2BPPV1_EXT,          GL_COMPRESSED_RGB_PVRTC_2BPPV1_IMG,             GL_COMPRESSED_RGB_PVRTC_2BPPV1_IMG,             GL_ZERO,                           false, { $_, $_, $_, $_ } }, // PTC12
+		{ GL_COMPRESSED_RGB_PVRTC_4BPPV1_IMG,          GL_COMPRESSED_SRGB_PVRTC_4BPPV1_EXT,          GL_COMPRESSED_RGB_PVRTC_4BPPV1_IMG,             GL_COMPRESSED_RGB_PVRTC_4BPPV1_IMG,             GL_ZERO,                           false, { $_, $_, $_, $_ } }, // PTC14
+		{ GL_COMPRESSED_RGBA_PVRTC_2BPPV1_IMG,         GL_COMPRESSED_SRGB_ALPHA_PVRTC_2BPPV1_EXT,    GL_COMPRESSED_RGBA_PVRTC_2BPPV1_IMG,            GL_COMPRESSED_RGBA_PVRTC_2BPPV1_IMG,            GL_ZERO,                           false, { $_, $_, $_, $_ } }, // PTC12A
+		{ GL_COMPRESSED_RGBA_PVRTC_4BPPV1_IMG,         GL_COMPRESSED_SRGB_ALPHA_PVRTC_4BPPV1_EXT,    GL_COMPRESSED_RGBA_PVRTC_4BPPV1_IMG,            GL_COMPRESSED_RGBA_PVRTC_4BPPV1_IMG,            GL_ZERO,                           false, { $_, $_, $_, $_ } }, // PTC14A
+		{ GL_COMPRESSED_RGBA_PVRTC_2BPPV2_IMG,         GL_ZERO,                                      GL_COMPRESSED_RGBA_PVRTC_2BPPV2_IMG,            GL_COMPRESSED_RGBA_PVRTC_2BPPV2_IMG,            GL_ZERO,                           false, { $_, $_, $_, $_ } }, // PTC22
+		{ GL_COMPRESSED_RGBA_PVRTC_4BPPV2_IMG,         GL_ZERO,                                      GL_COMPRESSED_RGBA_PVRTC_4BPPV2_IMG,            GL_COMPRESSED_RGBA_PVRTC_4BPPV2_IMG,            GL_ZERO,                           false, { $_, $_, $_, $_ } }, // PTC24
+		{ GL_ATC_RGB_AMD,                              GL_ZERO,                                      GL_ATC_RGB_AMD,                                 GL_ATC_RGB_AMD,                                 GL_ZERO,                           false, { $_, $_, $_, $_ } }, // ATC
+		{ GL_ATC_RGBA_EXPLICIT_ALPHA_AMD,              GL_ZERO,                                      GL_ATC_RGBA_EXPLICIT_ALPHA_AMD,                 GL_ATC_RGBA_EXPLICIT_ALPHA_AMD,                 GL_ZERO,                           false, { $_, $_, $_, $_ } }, // ATCE
+		{ GL_ATC_RGBA_INTERPOLATED_ALPHA_AMD,          GL_ZERO,                                      GL_ATC_RGBA_INTERPOLATED_ALPHA_AMD,             GL_ATC_RGBA_INTERPOLATED_ALPHA_AMD,             GL_ZERO,                           false, { $_, $_, $_, $_ } }, // ATCI
+		{ GL_COMPRESSED_RGBA_ASTC_4x4_KHR,             GL_COMPRESSED_SRGB8_ASTC_4x4_KHR,             GL_COMPRESSED_RGBA_ASTC_4x4_KHR,                GL_COMPRESSED_RGBA_ASTC_4x4_KHR,                GL_ZERO,                           false, { $_, $_, $_, $_ } }, // ASTC4x4
+		{ GL_COMPRESSED_RGBA_ASTC_5x4_KHR,             GL_COMPRESSED_SRGB8_ASTC_5x4_KHR,             GL_COMPRESSED_RGBA_ASTC_5x4_KHR,                GL_COMPRESSED_RGBA_ASTC_5x4_KHR,                GL_ZERO,                           false, { $_, $_, $_, $_ } }, // ASTC5x4
+		{ GL_COMPRESSED_RGBA_ASTC_5x5_KHR,             GL_COMPRESSED_SRGB8_ASTC_5x5_KHR,             GL_COMPRESSED_RGBA_ASTC_5x5_KHR,                GL_COMPRESSED_RGBA_ASTC_5x5_KHR,                GL_ZERO,                           false, { $_, $_, $_, $_ } }, // ASTC5x5
+		{ GL_COMPRESSED_RGBA_ASTC_6x5_KHR,             GL_COMPRESSED_SRGB8_ASTC_6x5_KHR,             GL_COMPRESSED_RGBA_ASTC_6x5_KHR,                GL_COMPRESSED_RGBA_ASTC_6x5_KHR,                GL_ZERO,                           false, { $_, $_, $_, $_ } }, // ASTC6x5
+		{ GL_COMPRESSED_RGBA_ASTC_6x6_KHR,             GL_COMPRESSED_SRGB8_ASTC_6x6_KHR,             GL_COMPRESSED_RGBA_ASTC_6x6_KHR,                GL_COMPRESSED_RGBA_ASTC_6x6_KHR,                GL_ZERO,                           false, { $_, $_, $_, $_ } }, // ASTC6x6
+		{ GL_COMPRESSED_RGBA_ASTC_8x5_KHR,             GL_COMPRESSED_SRGB8_ASTC_8x5_KHR,             GL_COMPRESSED_RGBA_ASTC_8x5_KHR,                GL_COMPRESSED_RGBA_ASTC_8x5_KHR,                GL_ZERO,                           false, { $_, $_, $_, $_ } }, // ASTC8x5
+		{ GL_COMPRESSED_RGBA_ASTC_8x6_KHR,             GL_COMPRESSED_SRGB8_ASTC_8x6_KHR,             GL_COMPRESSED_RGBA_ASTC_8x6_KHR,                GL_COMPRESSED_RGBA_ASTC_8x6_KHR,                GL_ZERO,                           false, { $_, $_, $_, $_ } }, // ASTC8x6
+		{ GL_COMPRESSED_RGBA_ASTC_8x8_KHR,             GL_COMPRESSED_SRGB8_ASTC_8x8_KHR,             GL_COMPRESSED_RGBA_ASTC_8x8_KHR,                GL_COMPRESSED_RGBA_ASTC_8x8_KHR,                GL_ZERO,                           false, { $_, $_, $_, $_ } }, // ASTC8x8
+		{ GL_COMPRESSED_RGBA_ASTC_10x5_KHR,            GL_COMPRESSED_SRGB8_ASTC_10x5_KHR,            GL_COMPRESSED_RGBA_ASTC_10x5_KHR,               GL_COMPRESSED_RGBA_ASTC_10x5_KHR,               GL_ZERO,                           false, { $_, $_, $_, $_ } }, // ASTC10x5
+		{ GL_COMPRESSED_RGBA_ASTC_10x6_KHR,            GL_COMPRESSED_SRGB8_ASTC_10x6_KHR,            GL_COMPRESSED_RGBA_ASTC_10x6_KHR,               GL_COMPRESSED_RGBA_ASTC_10x6_KHR,               GL_ZERO,                           false, { $_, $_, $_, $_ } }, // ASTC10x6
+		{ GL_COMPRESSED_RGBA_ASTC_10x8_KHR,            GL_COMPRESSED_SRGB8_ASTC_10x8_KHR,            GL_COMPRESSED_RGBA_ASTC_10x8_KHR,               GL_COMPRESSED_RGBA_ASTC_10x8_KHR,               GL_ZERO,                           false, { $_, $_, $_, $_ } }, // ASTC10x8
+		{ GL_COMPRESSED_RGBA_ASTC_10x10_KHR,           GL_COMPRESSED_SRGB8_ASTC_10x10_KHR,           GL_COMPRESSED_RGBA_ASTC_10x10_KHR,              GL_COMPRESSED_RGBA_ASTC_10x10_KHR,              GL_ZERO,                           false, { $_, $_, $_, $_ } }, // ASTC10x10
+		{ GL_COMPRESSED_RGBA_ASTC_12x10_KHR,           GL_COMPRESSED_SRGB8_ASTC_12x10_KHR,           GL_COMPRESSED_RGBA_ASTC_12x10_KHR,              GL_COMPRESSED_RGBA_ASTC_12x10_KHR,              GL_ZERO,                           false, { $_, $_, $_, $_ } }, // ASTC12x10
+		{ GL_COMPRESSED_RGBA_ASTC_12x12_KHR,           GL_COMPRESSED_SRGB8_ASTC_12x12_KHR,           GL_COMPRESSED_RGBA_ASTC_12x12_KHR,              GL_COMPRESSED_RGBA_ASTC_12x12_KHR,              GL_ZERO,                           false, { $_, $_, $_, $_ } }, // ASTC12x12
+		{ GL_ZERO,                                     GL_ZERO,                                      GL_ZERO,                                        GL_ZERO,                                        GL_ZERO,                           false, { $_, $_, $_, $_ } }, // Unknown
+		{ GL_ZERO,                                     GL_ZERO,                                      GL_ZERO,                                        GL_ZERO,                                        GL_ZERO,                           false, { $_, $_, $_, $_ } }, // R1
+		{ GL_ALPHA,                                    GL_ZERO,                                      GL_ALPHA,                                       GL_ALPHA,                                       GL_UNSIGNED_BYTE,                  false, { $_, $_, $_, $_ } }, // A8
+		{ GL_R8,                                       GL_ZERO,                                      GL_RED,                                         GL_RED,                                         GL_UNSIGNED_BYTE,                  false, { $_, $_, $_, $_ } }, // R8
+		{ GL_R8I,                                      GL_ZERO,                                      RED_INTEGER,                                    GL_RED_INTEGER,                                 GL_BYTE,                           false, { $_, $_, $_, $_ } }, // R8I
+		{ GL_R8UI,                                     GL_ZERO,                                      RED_INTEGER,                                    GL_RED_INTEGER,                                 GL_UNSIGNED_BYTE,                  false, { $_, $_, $_, $_ } }, // R8U
+		{ GL_R8_SNORM,                                 GL_ZERO,                                      GL_RED,                                         GL_RED,                                         GL_BYTE,                           false, { $_, $_, $_, $_ } }, // R8S
+		{ GL_R16,                                      GL_ZERO,                                      GL_RED,                                         GL_RED,                                         GL_UNSIGNED_SHORT,                 false, { $_, $_, $_, $_ } }, // R16
+		{ GL_R16I,                                     GL_ZERO,                                      RED_INTEGER,                                    GL_RED_INTEGER,                                 GL_SHORT,                          false, { $_, $_, $_, $_ } }, // R16I
+		{ GL_R16UI,                                    GL_ZERO,                                      RED_INTEGER,                                    GL_RED_INTEGER,                                 GL_UNSIGNED_SHORT,                 false, { $_, $_, $_, $_ } }, // R16U
+		{ GL_R16F,                                     GL_ZERO,                                      GL_RED,                                         GL_RED,                                         GL_HALF_FLOAT,                     false, { $_, $_, $_, $_ } }, // R16F
+		{ GL_R16_SNORM,                                GL_ZERO,                                      GL_RED,                                         GL_RED,                                         GL_SHORT,                          false, { $_, $_, $_, $_ } }, // R16S
+		{ GL_R32I,                                     GL_ZERO,                                      RED_INTEGER,                                    GL_RED_INTEGER,                                 GL_INT,                            false, { $_, $_, $_, $_ } }, // R32I
+		{ GL_R32UI,                                    GL_ZERO,                                      RED_INTEGER,                                    GL_RED_INTEGER,                                 GL_UNSIGNED_INT,                   false, { $_, $_, $_, $_ } }, // R32U
+		{ GL_R32F,                                     GL_ZERO,                                      GL_RED,                                         GL_RED,                                         GL_FLOAT,                          false, { $_, $_, $_, $_ } }, // R32F
+		{ GL_RG8,                                      GL_ZERO,                                      GL_RG,                                          GL_RG,                                          GL_UNSIGNED_BYTE,                  false, { $_, $_, $_, $_ } }, // RG8
+		{ GL_RG8I,                                     GL_ZERO,                                      RG_INTEGER,                                     GL_RG_INTEGER,                                  GL_BYTE,                           false, { $_, $_, $_, $_ } }, // RG8I
+		{ GL_RG8UI,                                    GL_ZERO,                                      RG_INTEGER,                                     GL_RG_INTEGER,                                  GL_UNSIGNED_BYTE,                  false, { $_, $_, $_, $_ } }, // RG8U
+		{ GL_RG8_SNORM,                                GL_ZERO,                                      GL_RG,                                          GL_RG,                                          GL_BYTE,                           false, { $_, $_, $_, $_ } }, // RG8S
+		{ GL_RG16,                                     GL_ZERO,                                      GL_RG,                                          GL_RG,                                          GL_UNSIGNED_SHORT,                 false, { $_, $_, $_, $_ } }, // RG16
+		{ GL_RG16I,                                    GL_ZERO,                                      RG_INTEGER,                                     GL_RG_INTEGER,                                  GL_SHORT,                          false, { $_, $_, $_, $_ } }, // RG16I
+		{ GL_RG16UI,                                   GL_ZERO,                                      RG_INTEGER,                                     GL_RG_INTEGER,                                  GL_UNSIGNED_SHORT,                 false, { $_, $_, $_, $_ } }, // RG16U
+		{ GL_RG16F,                                    GL_ZERO,                                      GL_RG,                                          GL_RG,                                          GL_HALF_FLOAT,                     false, { $_, $_, $_, $_ } }, // RG16F
+		{ GL_RG16_SNORM,                               GL_ZERO,                                      GL_RG,                                          GL_RG,                                          GL_SHORT,                          false, { $_, $_, $_, $_ } }, // RG16S
+		{ GL_RG32I,                                    GL_ZERO,                                      RG_INTEGER,                                     GL_RG_INTEGER,                                  GL_INT,                            false, { $_, $_, $_, $_ } }, // RG32I
+		{ GL_RG32UI,                                   GL_ZERO,                                      RG_INTEGER,                                     GL_RG_INTEGER,                                  GL_UNSIGNED_INT,                   false, { $_, $_, $_, $_ } }, // RG32U
+		{ GL_RG32F,                                    GL_ZERO,                                      GL_RG,                                          GL_RG,                                          GL_FLOAT,                          false, { $_, $_, $_, $_ } }, // RG32F
+		{ GL_RGB8,                                     GL_SRGB8,                                     GL_RGB,                                         GL_RGB,                                         GL_UNSIGNED_BYTE,                  false, { $_, $_, $_, $_ } }, // RGB8
+		{ GL_RGB8I,                                    GL_ZERO,                                      RGB_INTEGER,                                    GL_RGB_INTEGER,                                 GL_BYTE,                           false, { $_, $_, $_, $_ } }, // RGB8I
+		{ GL_RGB8UI,                                   GL_ZERO,                                      RGB_INTEGER,                                    GL_RGB_INTEGER,                                 GL_UNSIGNED_BYTE,                  false, { $_, $_, $_, $_ } }, // RGB8U
+		{ GL_RGB8_SNORM,                               GL_ZERO,                                      GL_RGB,                                         GL_RGB,                                         GL_BYTE,                           false, { $_, $_, $_, $_ } }, // RGB8S
+		{ GL_RGB9_E5,                                  GL_ZERO,                                      GL_RGB,                                         GL_RGB,                                         GL_UNSIGNED_INT_5_9_9_9_REV,       false, { $_, $_, $_, $_ } }, // RGB9E5F
+		{ GL_RGBA8,                                    GL_SRGB8_ALPHA8,                              GL_BGRA,                                        GL_BGRA,                                        GL_UNSIGNED_BYTE,                  false, { $_, $_, $_, $_ } }, // BGRA8
+		{ GL_RGBA8,                                    GL_SRGB8_ALPHA8,                              GL_RGBA,                                        GL_RGBA,                                        GL_UNSIGNED_BYTE,                  false, { $_, $_, $_, $_ } }, // RGBA8
+		{ GL_RGBA8I,                                   GL_ZERO,                                      RGBA_INTEGER,                                   GL_RGBA_INTEGER,                                GL_BYTE,                           false, { $_, $_, $_, $_ } }, // RGBA8I
+		{ GL_RGBA8UI,                                  GL_ZERO,                                      RGBA_INTEGER,                                   GL_RGBA_INTEGER,                                GL_UNSIGNED_BYTE,                  false, { $_, $_, $_, $_ } }, // RGBA8U
+		{ GL_RGBA8_SNORM,                              GL_ZERO,                                      GL_RGBA,                                        GL_RGBA,                                        GL_BYTE,                           false, { $_, $_, $_, $_ } }, // RGBA8S
+		{ GL_RGBA16,                                   GL_ZERO,                                      GL_RGBA,                                        GL_RGBA,                                        GL_UNSIGNED_SHORT,                 false, { $_, $_, $_, $_ } }, // RGBA16
+		{ GL_RGBA16I,                                  GL_ZERO,                                      RGBA_INTEGER,                                   GL_RGBA_INTEGER,                                GL_SHORT,                          false, { $_, $_, $_, $_ } }, // RGBA16I
+		{ GL_RGBA16UI,                                 GL_ZERO,                                      RGBA_INTEGER,                                   GL_RGBA_INTEGER,                                GL_UNSIGNED_SHORT,                 false, { $_, $_, $_, $_ } }, // RGBA16U
+		{ GL_RGBA16F,                                  GL_ZERO,                                      GL_RGBA,                                        GL_RGBA,                                        GL_HALF_FLOAT,                     false, { $_, $_, $_, $_ } }, // RGBA16F
+		{ GL_RGBA16_SNORM,                             GL_ZERO,                                      GL_RGBA,                                        GL_RGBA,                                        GL_SHORT,                          false, { $_, $_, $_, $_ } }, // RGBA16S
+		{ GL_RGBA32I,                                  GL_ZERO,                                      RGBA_INTEGER,                                   GL_RGBA_INTEGER,                                GL_INT,                            false, { $_, $_, $_, $_ } }, // RGBA32I
+		{ GL_RGBA32UI,                                 GL_ZERO,                                      RGBA_INTEGER,                                   GL_RGBA_INTEGER,                                GL_UNSIGNED_INT,                   false, { $_, $_, $_, $_ } }, // RGBA32U
+		{ GL_RGBA32F,                                  GL_ZERO,                                      GL_RGBA,                                        GL_RGBA,                                        GL_FLOAT,                          false, { $_, $_, $_, $_ } }, // RGBA32F
+		{ GL_RGB565,                                   GL_ZERO,                                      GL_RGB,                                         GL_RGB,                                         GL_UNSIGNED_SHORT_5_6_5,           false, { $_, $_, $_, $_ } }, // B5G6R5
+		{ GL_RGB565,                                   GL_ZERO,                                      GL_RGB,                                         GL_RGB,                                         GL_UNSIGNED_SHORT_5_6_5,           false, { $_, $_, $_, $_ } }, // R5G6B5
+		{ GL_RGBA4,                                    GL_ZERO,                                      GL_BGRA,                                        GL_BGRA,                                        GL_UNSIGNED_SHORT_4_4_4_4_REV,     false, { $_, $_, $_, $_ } }, // BGRA4
+		{ GL_RGBA4,                                    GL_ZERO,                                      GL_RGBA,                                        GL_RGBA,                                        GL_UNSIGNED_SHORT_4_4_4_4_REV,     false, { $_, $_, $_, $_ } }, // RGBA4
+		{ GL_RGB5_A1,                                  GL_ZERO,                                      GL_BGRA,                                        GL_BGRA,                                        GL_UNSIGNED_SHORT_1_5_5_5_REV,     false, { $_, $_, $_, $_ } }, // BGR5A1
+		{ GL_RGB5_A1,                                  GL_ZERO,                                      GL_RGBA,                                        GL_RGBA,                                        GL_UNSIGNED_SHORT_1_5_5_5_REV,     false, { $_, $_, $_, $_ } }, // RGB5A1
+		{ GL_RGB10_A2,                                 GL_ZERO,                                      GL_RGBA,                                        GL_RGBA,                                        GL_UNSIGNED_INT_2_10_10_10_REV,    false, { $_, $_, $_, $_ } }, // RGB10A2
+		{ GL_RGB10_A2UI,                               GL_ZERO,                                      GL_RGBA_INTEGER,                                GL_RGBA_INTEGER,                                GL_UNSIGNED_INT_2_10_10_10_REV,    false, { $_, $_, $_, $_ } }, // RGB10A2U
+		{ GL_R11F_G11F_B10F,                           GL_ZERO,                                      GL_RGB,                                         GL_RGB,                                         GL_UNSIGNED_INT_10F_11F_11F_REV,   false, { $_, $_, $_, $_ } }, // RG11B10F
+		{ GL_ZERO,                                     GL_ZERO,                                      GL_ZERO,                                        GL_ZERO,                                        GL_ZERO,                           false, { $_, $_, $_, $_ } }, // UnknownDepth
+		{ GL_DEPTH_COMPONENT16,                        GL_ZERO,                                      GL_DEPTH_COMPONENT,                             GL_DEPTH_COMPONENT,                             GL_UNSIGNED_SHORT,                 false, { $_, $_, $_, $_ } }, // D16
+		{ GL_DEPTH_COMPONENT24,                        GL_ZERO,                                      GL_DEPTH_COMPONENT,                             GL_DEPTH_COMPONENT,                             GL_UNSIGNED_INT,                   false, { $_, $_, $_, $_ } }, // D24
+		{ GL_DEPTH24_STENCIL8,                         GL_ZERO,                                      GL_DEPTH_STENCIL,                               GL_DEPTH_STENCIL,                               GL_UNSIGNED_INT_24_8,              false, { $_, $_, $_, $_ } }, // D24S8
+		{ GL_DEPTH_COMPONENT32,                        GL_ZERO,                                      GL_DEPTH_COMPONENT,                             GL_DEPTH_COMPONENT,                             GL_UNSIGNED_INT,                   false, { $_, $_, $_, $_ } }, // D32
+		{ GL_DEPTH_COMPONENT32F,                       GL_ZERO,                                      GL_DEPTH_COMPONENT,                             GL_DEPTH_COMPONENT,                             GL_FLOAT,                          false, { $_, $_, $_, $_ } }, // D16F
+		{ GL_DEPTH_COMPONENT32F,                       GL_ZERO,                                      GL_DEPTH_COMPONENT,                             GL_DEPTH_COMPONENT,                             GL_FLOAT,                          false, { $_, $_, $_, $_ } }, // D24F
+		{ GL_DEPTH_COMPONENT32F,                       GL_ZERO,                                      GL_DEPTH_COMPONENT,                             GL_DEPTH_COMPONENT,                             GL_FLOAT,                          false, { $_, $_, $_, $_ } }, // D32F
+		{ GL_DEPTH32F_STENCIL8,                        GL_ZERO,                                      GL_DEPTH_STENCIL,                               GL_DEPTH_STENCIL,                               GL_FLOAT_32_UNSIGNED_INT_24_8_REV, false, { $_, $_, $_, $_ } }, // D32FS8
+		{ GL_STENCIL_INDEX8,                           GL_ZERO,                                      GL_STENCIL_INDEX,                               GL_STENCIL_INDEX,                               GL_UNSIGNED_BYTE,                  false, { $_, $_, $_, $_ } }, // D0S8
 #undef $_
 #undef $0
 #undef $1
@@ -583,6 +622,7 @@ namespace bgfx { namespace gl
 			ANGLE_framebuffer_blit,
 			ANGLE_framebuffer_multisample,
 			ANGLE_instanced_arrays,
+			ANGLE_polygon_mode,
 			ANGLE_texture_compression_dxt1,
 			ANGLE_texture_compression_dxt3,
 			ANGLE_texture_compression_dxt5,
@@ -619,6 +659,7 @@ namespace bgfx { namespace gl
 			ARB_multisample,
 			ARB_occlusion_query,
 			ARB_occlusion_query2,
+			ARB_polygon_offset_clamp,
 			ARB_program_interface_query,
 			ARB_provoking_vertex,
 			ARB_sampler_objects,
@@ -678,12 +719,14 @@ namespace bgfx { namespace gl
 			EXT_multi_draw_indirect,
 			EXT_occlusion_query_boolean,
 			EXT_packed_float,
+			EXT_polygon_offset_clamp,
 			EXT_read_format_bgra,
 			EXT_shader_image_load_store,
 			EXT_shader_texture_lod,
 			EXT_shadow_samplers,
 			EXT_sRGB_write_control,
 			EXT_texture_array,
+			EXT_texture_border_clamp,
 			EXT_texture_compression_dxt1,
 			EXT_texture_compression_latc,
 			EXT_texture_compression_rgtc,
@@ -695,6 +738,7 @@ namespace bgfx { namespace gl
 			EXT_texture_shared_exponent,
 			EXT_texture_snorm,
 			EXT_texture_sRGB,
+			EXT_texture_sRGB_decode,
 			EXT_texture_storage,
 			EXT_texture_swizzle,
 			EXT_texture_view,
@@ -727,6 +771,10 @@ namespace bgfx { namespace gl
 			NV_draw_instanced,
 			NV_instanced_arrays,
 			NV_occlusion_query,
+			NV_polygon_mode,
+			NV_read_depth,
+			NV_read_depth_stencil,
+			NV_read_stencil,
 			NV_texture_border_clamp,
 			NVX_gpu_memory_info,
 
@@ -735,6 +783,7 @@ namespace bgfx { namespace gl
 			OES_depth24,
 			OES_depth32,
 			OES_depth_texture,
+			OES_draw_buffers_indexed,
 			OES_element_index_uint,
 			OES_fragment_precision_high,
 			OES_fbo_render_mipmap,
@@ -745,6 +794,8 @@ namespace bgfx { namespace gl
 			OES_rgb8_rgba8,
 			OES_standard_derivatives,
 			OES_texture_3D,
+			OES_texture_border_clamp,
+			OES_texture_cube_map_array,
 			OES_texture_float,
 			OES_texture_float_linear,
 			OES_texture_npot,
@@ -798,197 +849,210 @@ namespace bgfx { namespace gl
 	//
 	static Extension s_extension[] =
 	{
-		{ "AMD_conservative_depth",                   false,                             true  },
-		{ "AMD_multi_draw_indirect",                  false,                             true  },
+		{ "AMD_conservative_depth",                   false,                                    true  },
+		{ "AMD_multi_draw_indirect",                  false,                                    true  },
 
-		{ "ANGLE_depth_texture",                      false,                             true  },
-		{ "ANGLE_framebuffer_blit",                   false,                             true  },
-		{ "ANGLE_framebuffer_multisample",            false,                             false },
-		{ "ANGLE_instanced_arrays",                   false,                             true  },
-		{ "ANGLE_texture_compression_dxt1",           false,                             true  },
-		{ "ANGLE_texture_compression_dxt3",           false,                             true  },
-		{ "ANGLE_texture_compression_dxt5",           false,                             true  },
-		{ "ANGLE_timer_query",                        false,                             true  },
-		{ "ANGLE_translated_shader_source",           false,                             true  },
+		{ "ANGLE_depth_texture",                      false,                                    true  },
+		{ "ANGLE_framebuffer_blit",                   false,                                    true  },
+		{ "ANGLE_framebuffer_multisample",            false,                                    false },
+		{ "ANGLE_instanced_arrays",                   false,                                    true  },
+		{ "ANGLE_polygon_mode",                       false,                                    true  },
+		{ "ANGLE_texture_compression_dxt1",           false,                                    true  },
+		{ "ANGLE_texture_compression_dxt3",           false,                                    true  },
+		{ "ANGLE_texture_compression_dxt5",           false,                                    true  },
+		{ "ANGLE_timer_query",                        false,                                    true  },
+		{ "ANGLE_translated_shader_source",           false,                                    true  },
 
-		{ "APPLE_texture_format_BGRA8888",            false,                             true  },
-		{ "APPLE_texture_max_level",                  false,                             true  },
+		{ "APPLE_texture_format_BGRA8888",            false,                                    true  },
+		{ "APPLE_texture_max_level",                  false,                                    true  },
 
-		{ "ARB_clip_control",                         BGFX_CONFIG_RENDERER_OPENGL >= 43, true  },
-		{ "ARB_compute_shader",                       BGFX_CONFIG_RENDERER_OPENGL >= 43, true  },
-		{ "ARB_conservative_depth",                   BGFX_CONFIG_RENDERER_OPENGL >= 42, true  },
-		{ "ARB_copy_image",                           BGFX_CONFIG_RENDERER_OPENGL >= 42, true  },
-		{ "ARB_debug_label",                          false,                             true  },
-		{ "ARB_debug_output",                         BGFX_CONFIG_RENDERER_OPENGL >= 43, true  },
-		{ "ARB_depth_buffer_float",                   BGFX_CONFIG_RENDERER_OPENGL >= 33, true  },
-		{ "ARB_depth_clamp",                          BGFX_CONFIG_RENDERER_OPENGL >= 32, true  },
-		{ "ARB_draw_buffers_blend",                   BGFX_CONFIG_RENDERER_OPENGL >= 40, true  },
-		{ "ARB_draw_indirect",                        BGFX_CONFIG_RENDERER_OPENGL >= 40, true  },
-		{ "ARB_draw_instanced",                       BGFX_CONFIG_RENDERER_OPENGL >= 33, true  },
-		{ "ARB_ES3_compatibility",                    BGFX_CONFIG_RENDERER_OPENGL >= 43, true  },
-		{ "ARB_framebuffer_object",                   BGFX_CONFIG_RENDERER_OPENGL >= 30, true  },
-		{ "ARB_framebuffer_sRGB",                     BGFX_CONFIG_RENDERER_OPENGL >= 30, true  },
-		{ "ARB_get_program_binary",                   BGFX_CONFIG_RENDERER_OPENGL >= 41, true  },
-		{ "ARB_half_float_pixel",                     BGFX_CONFIG_RENDERER_OPENGL >= 30, true  },
-		{ "ARB_half_float_vertex",                    BGFX_CONFIG_RENDERER_OPENGL >= 30, true  },
-		{ "ARB_indirect_parameters",                  BGFX_CONFIG_RENDERER_OPENGL >= 46, true  },
-		{ "ARB_instanced_arrays",                     BGFX_CONFIG_RENDERER_OPENGL >= 33, true  },
-		{ "ARB_internalformat_query",                 BGFX_CONFIG_RENDERER_OPENGL >= 42, true  },
-		{ "ARB_internalformat_query2",                BGFX_CONFIG_RENDERER_OPENGL >= 43, true  },
-		{ "ARB_invalidate_subdata",                   BGFX_CONFIG_RENDERER_OPENGL >= 43, true  },
-		{ "ARB_map_buffer_range",                     BGFX_CONFIG_RENDERER_OPENGL >= 30, true  },
-		{ "ARB_multi_draw_indirect",                  BGFX_CONFIG_RENDERER_OPENGL >= 43, true  },
-		{ "ARB_multisample",                          false,                             true  },
-		{ "ARB_occlusion_query",                      BGFX_CONFIG_RENDERER_OPENGL >= 33, true  },
-		{ "ARB_occlusion_query2",                     BGFX_CONFIG_RENDERER_OPENGL >= 33, true  },
-		{ "ARB_program_interface_query",              BGFX_CONFIG_RENDERER_OPENGL >= 43, true  },
-		{ "ARB_provoking_vertex",                     BGFX_CONFIG_RENDERER_OPENGL >= 32, true  },
-		{ "ARB_sampler_objects",                      BGFX_CONFIG_RENDERER_OPENGL >= 33, true  },
-		{ "ARB_seamless_cube_map",                    BGFX_CONFIG_RENDERER_OPENGL >= 32, true  },
-		{ "ARB_shader_bit_encoding",                  BGFX_CONFIG_RENDERER_OPENGL >= 33, true  },
-		{ "ARB_shader_image_load_store",              BGFX_CONFIG_RENDERER_OPENGL >= 42, true  },
-		{ "ARB_shader_storage_buffer_object",         BGFX_CONFIG_RENDERER_OPENGL >= 43, true  },
-		{ "ARB_shader_texture_lod",                   BGFX_CONFIG_RENDERER_OPENGL >= 30, true  },
-		{ "ARB_shader_viewport_layer_array",          false,                             true  },
-		{ "ARB_stencil_texturing",                    BGFX_CONFIG_RENDERER_OPENGL >= 43, true  },
-		{ "ARB_texture_compression_bptc",             BGFX_CONFIG_RENDERER_OPENGL >= 44, true  },
-		{ "ARB_texture_compression_rgtc",             BGFX_CONFIG_RENDERER_OPENGL >= 30, true  },
-		{ "ARB_texture_cube_map_array",               BGFX_CONFIG_RENDERER_OPENGL >= 40, true  },
-		{ "ARB_texture_float",                        BGFX_CONFIG_RENDERER_OPENGL >= 30, true  },
-		{ "ARB_texture_multisample",                  BGFX_CONFIG_RENDERER_OPENGL >= 32, true  },
-		{ "ARB_texture_rg",                           BGFX_CONFIG_RENDERER_OPENGL >= 30, true  },
-		{ "ARB_texture_rgb10_a2ui",                   BGFX_CONFIG_RENDERER_OPENGL >= 33, true  },
-		{ "ARB_texture_stencil8",                     false,                             true  },
-		{ "ARB_texture_storage",                      BGFX_CONFIG_RENDERER_OPENGL >= 42, true  },
-		{ "ARB_texture_swizzle",                      BGFX_CONFIG_RENDERER_OPENGL >= 33, true  },
-		{ "ARB_texture_view",                         BGFX_CONFIG_RENDERER_OPENGL >= 43, true  },
-		{ "ARB_timer_query",                          BGFX_CONFIG_RENDERER_OPENGL >= 33, true  },
-		{ "ARB_uniform_buffer_object",                BGFX_CONFIG_RENDERER_OPENGL >= 31, true  },
-		{ "ARB_vertex_array_object",                  BGFX_CONFIG_RENDERER_OPENGL >= 30, true  },
-		{ "ARB_vertex_type_2_10_10_10_rev",           false,                             true  },
+		{ "ARB_clip_control",                         BGFX_CONFIG_RENDERER_OPENGL >= 43,        true  },
+		{ "ARB_compute_shader",                       BGFX_CONFIG_RENDERER_OPENGL >= 43,        true  },
+		{ "ARB_conservative_depth",                   BGFX_CONFIG_RENDERER_OPENGL >= 42,        true  },
+		{ "ARB_copy_image",                           BGFX_CONFIG_RENDERER_OPENGL >= 42,        true  },
+		{ "ARB_debug_label",                          false,                                    true  },
+		{ "ARB_debug_output",                         BGFX_CONFIG_RENDERER_OPENGL >= 43,        true  },
+		{ "ARB_depth_buffer_float",                   BGFX_CONFIG_RENDERER_OPENGL >= 33,        true  },
+		{ "ARB_depth_clamp",                          BGFX_CONFIG_RENDERER_OPENGL >= 32,        true  },
+		{ "ARB_draw_buffers_blend",                   BGFX_CONFIG_RENDERER_OPENGL >= 40,        true  },
+		{ "ARB_draw_indirect",                        BGFX_CONFIG_RENDERER_OPENGL >= 40,        true  },
+		{ "ARB_draw_instanced",                       BGFX_CONFIG_RENDERER_OPENGL >= 33,        true  },
+		{ "ARB_ES3_compatibility",                    BGFX_CONFIG_RENDERER_OPENGL >= 43,        true  },
+		{ "ARB_framebuffer_object",                   BGFX_CONFIG_RENDERER_OPENGL >= 30,        true  },
+		{ "ARB_framebuffer_sRGB",                     BGFX_CONFIG_RENDERER_OPENGL >= 30,        true  },
+		{ "ARB_get_program_binary",                   BGFX_CONFIG_RENDERER_OPENGL >= 41,        true  },
+		{ "ARB_half_float_pixel",                     BGFX_CONFIG_RENDERER_OPENGL >= 30,        true  },
+		{ "ARB_half_float_vertex",                    BGFX_CONFIG_RENDERER_OPENGL >= 30,        true  },
+		{ "ARB_indirect_parameters",                  BGFX_CONFIG_RENDERER_OPENGL >= 46,        true  },
+		{ "ARB_instanced_arrays",                     BGFX_CONFIG_RENDERER_OPENGL >= 33,        true  },
+		{ "ARB_internalformat_query",                 BGFX_CONFIG_RENDERER_OPENGL >= 42,        true  },
+		{ "ARB_internalformat_query2",                BGFX_CONFIG_RENDERER_OPENGL >= 43,        true  },
+		{ "ARB_invalidate_subdata",                   BGFX_CONFIG_RENDERER_OPENGL >= 43,        true  },
+		{ "ARB_map_buffer_range",                     BGFX_CONFIG_RENDERER_OPENGL >= 30,        true  },
+		{ "ARB_multi_draw_indirect",                  BGFX_CONFIG_RENDERER_OPENGL >= 43,        true  },
+		{ "ARB_multisample",                          BGFX_CONFIG_RENDERER_OPENGLES >= 20,      true  },
+		{ "ARB_occlusion_query",                      BGFX_CONFIG_RENDERER_OPENGL >= 33,        true  },
+		{ "ARB_occlusion_query2",                     BGFX_CONFIG_RENDERER_OPENGL >= 33,        true  },
+		{ "ARB_polygon_offset_clamp",                 BGFX_CONFIG_RENDERER_OPENGL >= 46,        true  },
+		{ "ARB_program_interface_query",              BGFX_CONFIG_RENDERER_OPENGL >= 43,        true  },
+		{ "ARB_provoking_vertex",                     BGFX_CONFIG_RENDERER_OPENGL >= 32,        true  },
+		{ "ARB_sampler_objects",                      BGFX_CONFIG_RENDERER_OPENGL >= 33,        true  },
+		{ "ARB_seamless_cube_map",                    BGFX_CONFIG_RENDERER_OPENGL >= 32,        true  },
+		{ "ARB_shader_bit_encoding",                  BGFX_CONFIG_RENDERER_OPENGL >= 33,        true  },
+		{ "ARB_shader_image_load_store",              BGFX_CONFIG_RENDERER_OPENGL >= 42,        true  },
+		{ "ARB_shader_storage_buffer_object",         BGFX_CONFIG_RENDERER_OPENGL >= 43,        true  },
+		{ "ARB_shader_texture_lod",                   BGFX_CONFIG_RENDERER_OPENGL >= 30,        true  },
+		{ "ARB_shader_viewport_layer_array",          false,                                    true  },
+		{ "ARB_stencil_texturing",                    BGFX_CONFIG_RENDERER_OPENGL >= 43,        true  },
+		{ "ARB_texture_compression_bptc",             BGFX_CONFIG_RENDERER_OPENGL >= 44,        true  },
+		{ "ARB_texture_compression_rgtc",             BGFX_CONFIG_RENDERER_OPENGL >= 30,        true  },
+		{ "ARB_texture_cube_map_array",               BGFX_CONFIG_RENDERER_OPENGL >= 40,        true  },
+		{ "ARB_texture_float",                        BGFX_CONFIG_RENDERER_OPENGL >= 30,        true  },
+		{ "ARB_texture_multisample",                  BGFX_CONFIG_RENDERER_OPENGL >= 32,        true  },
+		{ "ARB_texture_rg",                           BGFX_CONFIG_RENDERER_OPENGL >= 30,        true  },
+		{ "ARB_texture_rgb10_a2ui",                   BGFX_CONFIG_RENDERER_OPENGL >= 33,        true  },
+		{ "ARB_texture_stencil8",                     false,                                    true  },
+		{ "ARB_texture_storage",                      BGFX_CONFIG_RENDERER_OPENGL >= 42,        true  },
+		{ "ARB_texture_swizzle",                      BGFX_CONFIG_RENDERER_OPENGL >= 33,        true  },
+		{ "ARB_texture_view",                         BGFX_CONFIG_RENDERER_OPENGL >= 43,        true  },
+		{ "ARB_timer_query",                          BGFX_CONFIG_RENDERER_OPENGL >= 33,        true  },
+		{ "ARB_uniform_buffer_object",                BGFX_CONFIG_RENDERER_OPENGL >= 31,        true  },
+		{ "ARB_vertex_array_object",                  BGFX_CONFIG_RENDERER_OPENGL >= 30,        true  },
+		{ "ARB_vertex_type_2_10_10_10_rev",           false,                                    true  },
 
-		{ "ATI_meminfo",                              false,                             true  },
+		{ "ATI_meminfo",                              false,                                    true  },
 
-		{ "CHROMIUM_color_buffer_float_rgb",          false,                             true  },
-		{ "CHROMIUM_color_buffer_float_rgba",         false,                             true  },
-		{ "CHROMIUM_depth_texture",                   false,                             true  },
-		{ "CHROMIUM_framebuffer_multisample",         false,                             true  },
-		{ "CHROMIUM_texture_compression_dxt3",        false,                             true  },
-		{ "CHROMIUM_texture_compression_dxt5",        false,                             true  },
+		{ "CHROMIUM_color_buffer_float_rgb",          false,                                    true  },
+		{ "CHROMIUM_color_buffer_float_rgba",         false,                                    true  },
+		{ "CHROMIUM_depth_texture",                   false,                                    true  },
+		{ "CHROMIUM_framebuffer_multisample",         false,                                    true  },
+		{ "CHROMIUM_texture_compression_dxt3",        false,                                    true  },
+		{ "CHROMIUM_texture_compression_dxt5",        false,                                    true  },
 
-		{ "EXT_bgra",                                 false,                             true  },
-		{ "EXT_blend_color",                          BGFX_CONFIG_RENDERER_OPENGL >= 31, true  },
-		{ "EXT_blend_minmax",                         BGFX_CONFIG_RENDERER_OPENGL >= 14, true  },
-		{ "EXT_blend_subtract",                       BGFX_CONFIG_RENDERER_OPENGL >= 14, true  },
-		{ "EXT_color_buffer_half_float",              false,                             true  }, // GLES extension.
-		{ "EXT_color_buffer_float",                   false,                             true  }, // GLES extension.
-		{ "EXT_copy_image",                           false,                             true  }, // GLES extension.
-		{ "EXT_compressed_ETC1_RGB8_sub_texture",     false,                             true  }, // GLES extension.
-		{ "EXT_debug_label",                          false,                             true  },
-		{ "EXT_debug_marker",                         false,                             true  },
-		{ "EXT_debug_tool",                           false,                             true  }, // RenderDoc extension.
-		{ "EXT_discard_framebuffer",                  false,                             true  }, // GLES extension.
-		{ "EXT_disjoint_timer_query",                 false,                             true  }, // GLES extension.
-		{ "EXT_draw_buffers",                         false,                             true  }, // GLES extension.
-		{ "EXT_draw_instanced",                       false,                             true  }, // GLES extension.
-		{ "EXT_instanced_arrays",                     false,                             true  }, // GLES extension.
-		{ "EXT_frag_depth",                           false,                             true  }, // GLES extension.
-		{ "EXT_framebuffer_blit",                     BGFX_CONFIG_RENDERER_OPENGL >= 30, true  },
-		{ "EXT_framebuffer_object",                   BGFX_CONFIG_RENDERER_OPENGL >= 30, true  },
-		{ "EXT_framebuffer_sRGB",                     BGFX_CONFIG_RENDERER_OPENGL >= 30, true  },
-		{ "EXT_gpu_shader4",                          BGFX_CONFIG_RENDERER_OPENGL >= 31, true  },
-		{ "EXT_multi_draw_indirect",                  false,                             true  }, // GLES3.1 extension.
-		{ "EXT_occlusion_query_boolean",              false,                             true  }, // GLES extension.
-		{ "EXT_packed_float",                         BGFX_CONFIG_RENDERER_OPENGL >= 33, true  },
-		{ "EXT_read_format_bgra",                     false,                             true  },
-		{ "EXT_shader_image_load_store",              false,                             true  },
-		{ "EXT_shader_texture_lod",                   false,                             true  }, // GLES extension.
-		{ "EXT_shadow_samplers",                      false,                             true  },
-		{ "EXT_sRGB_write_control",                   false,                             true  }, // GLES extension.
-		{ "EXT_texture_array",                        BGFX_CONFIG_RENDERER_OPENGL >= 30, true  },
-		{ "EXT_texture_compression_dxt1",             false,                             true  },
-		{ "EXT_texture_compression_latc",             false,                             true  },
-		{ "EXT_texture_compression_rgtc",             BGFX_CONFIG_RENDERER_OPENGL >= 30, true  },
-		{ "EXT_texture_compression_s3tc",             false,                             true  },
-		{ "EXT_texture_cube_map_array",               false,                             true  }, // GLES3.1 extension.
-		{ "EXT_texture_filter_anisotropic",           false,                             true  },
-		{ "EXT_texture_format_BGRA8888",              false,                             true  },
-		{ "EXT_texture_rg",                           false,                             true  }, // GLES extension.
-		{ "EXT_texture_shared_exponent",              false,                             true  },
-		{ "EXT_texture_snorm",                        BGFX_CONFIG_RENDERER_OPENGL >= 30, true  },
-		{ "EXT_texture_sRGB",                         false,                             true  },
-		{ "EXT_texture_storage",                      false,                             true  },
-		{ "EXT_texture_swizzle",                      false,                             true  },
-		{ "EXT_texture_view",                         false,                             true  },
-		{ "EXT_texture_type_2_10_10_10_REV",          false,                             true  },
-		{ "EXT_timer_query",                          BGFX_CONFIG_RENDERER_OPENGL >= 33, true  },
-		{ "EXT_unpack_subimage",                      false,                             true  },
-		{ "EXT_sRGB",                                 false,                             true  }, // GLES extension.
-		{ "EXT_multisampled_render_to_texture",       false,                             true  }, // GLES extension.
+		{ "EXT_bgra",                                 false,                                    true  },
+		{ "EXT_blend_color",                          BGFX_CONFIG_RENDERER_OPENGL >= 31,        true  },
+		{ "EXT_blend_minmax",                         BGFX_CONFIG_RENDERER_OPENGL >= 14,        true  },
+		{ "EXT_blend_subtract",                       BGFX_CONFIG_RENDERER_OPENGL >= 14,        true  },
+		{ "EXT_color_buffer_half_float",              false,                                    true  }, // GLES extension.
+		{ "EXT_color_buffer_float",                   false,                                    true  }, // GLES extension.
+		{ "EXT_copy_image",                           false,                                    true  }, // GLES extension.
+		{ "EXT_compressed_ETC1_RGB8_sub_texture",     false,                                    true  }, // GLES extension.
+		{ "EXT_debug_label",                          false,                                    true  },
+		{ "EXT_debug_marker",                         false,                                    true  },
+		{ "EXT_debug_tool",                           false,                                    true  }, // RenderDoc extension.
+		{ "EXT_discard_framebuffer",                  false,                                    true  }, // GLES extension.
+		{ "EXT_disjoint_timer_query",                 false,                                    true  }, // GLES extension.
+		{ "EXT_draw_buffers",                         false,                                    true  }, // GLES extension.
+		{ "EXT_draw_instanced",                       false,                                    true  }, // GLES extension.
+		{ "EXT_instanced_arrays",                     false,                                    true  }, // GLES extension.
+		{ "EXT_frag_depth",                           false,                                    true  }, // GLES extension.
+		{ "EXT_framebuffer_blit",                     BGFX_CONFIG_RENDERER_OPENGL >= 30,        true  },
+		{ "EXT_framebuffer_object",                   BGFX_CONFIG_RENDERER_OPENGL >= 30,        true  },
+		{ "EXT_framebuffer_sRGB",                     BGFX_CONFIG_RENDERER_OPENGL >= 30,        true  },
+		{ "EXT_gpu_shader4",                          BGFX_CONFIG_RENDERER_OPENGL >= 31,        true  },
+		{ "EXT_multi_draw_indirect",                  false,                                    true  }, // GLES3.1 extension.
+		{ "EXT_occlusion_query_boolean",              false,                                    true  }, // GLES extension.
+		{ "EXT_packed_float",                         BGFX_CONFIG_RENDERER_OPENGL >= 33,        true  },
+		{ "EXT_polygon_offset_clamp",                 false,                                    true  },
+		{ "EXT_read_format_bgra",                     false,                                    true  },
+		{ "EXT_shader_image_load_store",              false,                                    true  },
+		{ "EXT_shader_texture_lod",                   false,                                    true  }, // GLES extension.
+		{ "EXT_shadow_samplers",                      false,                                    true  },
+		{ "EXT_sRGB_write_control",                   false,                                    true  }, // GLES extension.
+		{ "EXT_texture_array",                        BGFX_CONFIG_RENDERER_OPENGL >= 30,        true  },
+		{ "EXT_texture_border_clamp",                 false,                                    true  }, // GLES extension.
+		{ "EXT_texture_compression_dxt1",             false,                                    true  },
+		{ "EXT_texture_compression_latc",             false,                                    true  },
+		{ "EXT_texture_compression_rgtc",             BGFX_CONFIG_RENDERER_OPENGL >= 30,        true  },
+		{ "EXT_texture_compression_s3tc",             false,                                    true  },
+		{ "EXT_texture_cube_map_array",               false,                                    true  }, // GLES3.1 extension.
+		{ "EXT_texture_filter_anisotropic",           false,                                    true  },
+		{ "EXT_texture_format_BGRA8888",              false,                                    true  },
+		{ "EXT_texture_rg",                           false,                                    true  }, // GLES extension.
+		{ "EXT_texture_shared_exponent",              false,                                    true  },
+		{ "EXT_texture_snorm",                        BGFX_CONFIG_RENDERER_OPENGL >= 30,        true  },
+		{ "EXT_texture_sRGB",                         false,                                    true  },
+		{ "EXT_texture_sRGB_decode",                  false,                                    true  },
+		{ "EXT_texture_storage",                      false,                                    true  },
+		{ "EXT_texture_swizzle",                      false,                                    true  },
+		{ "EXT_texture_view",                         false,                                    true  },
+		{ "EXT_texture_type_2_10_10_10_REV",          false,                                    true  },
+		{ "EXT_timer_query",                          BGFX_CONFIG_RENDERER_OPENGL >= 33,        true  },
+		{ "EXT_unpack_subimage",                      false,                                    true  },
+		{ "EXT_sRGB",                                 false,                                    true  }, // GLES extension.
+		{ "EXT_multisampled_render_to_texture",       false,                                    true  }, // GLES extension.
 
-		{ "GOOGLE_depth_texture",                     false,                             true  },
+		{ "GOOGLE_depth_texture",                     false,                                    true  },
 
-		{ "IMG_multisampled_render_to_texture",       false,                             true  },
-		{ "IMG_read_format",                          false,                             true  },
-		{ "IMG_shader_binary",                        false,                             true  },
-		{ "IMG_texture_compression_pvrtc",            false,                             true  },
-		{ "IMG_texture_compression_pvrtc2",           false,                             true  },
-		{ "IMG_texture_format_BGRA8888",              false,                             true  },
+		{ "IMG_multisampled_render_to_texture",       false,                                    true  },
+		{ "IMG_read_format",                          false,                                    true  },
+		{ "IMG_shader_binary",                        false,                                    true  },
+		{ "IMG_texture_compression_pvrtc",            false,                                    true  },
+		{ "IMG_texture_compression_pvrtc2",           false,                                    true  },
+		{ "IMG_texture_format_BGRA8888",              false,                                    true  },
 
-		{ "INTEL_fragment_shader_ordering",           false,                             true  },
+		{ "INTEL_fragment_shader_ordering",           false,                                    true  },
 
-		{ "KHR_debug",                                BGFX_CONFIG_RENDERER_OPENGL >= 43, true  },
-		{ "KHR_no_error",                             false,                             true  },
+		{ "KHR_debug",                                BGFX_CONFIG_RENDERER_OPENGL >= 43,        true  },
+		{ "KHR_no_error",                             false,                                    true  },
 
-		{ "MOZ_WEBGL_compressed_texture_s3tc",        false,                             true  },
-		{ "MOZ_WEBGL_depth_texture",                  false,                             true  },
+		{ "MOZ_WEBGL_compressed_texture_s3tc",        false,                                    true  },
+		{ "MOZ_WEBGL_depth_texture",                  false,                                    true  },
 
-		{ "NV_conservative_raster",                   false,                             true  },
-		{ "NV_copy_image",                            false,                             true  },
-		{ "NV_draw_buffers",                          false,                             true  }, // GLES extension.
-		{ "NV_draw_instanced",                        false,                             true  }, // GLES extension.
-		{ "NV_instanced_arrays",                      false,                             true  }, // GLES extension.
-		{ "NV_occlusion_query",                       false,                             true  },
-		{ "NV_texture_border_clamp",                  false,                             true  }, // GLES extension.
-		{ "NVX_gpu_memory_info",                      false,                             true  },
+		{ "NV_conservative_raster",                   false,                                    true  },
+		{ "NV_copy_image",                            false,                                    true  },
+		{ "NV_draw_buffers",                          false,                                    true  }, // GLES extension.
+		{ "NV_draw_instanced",                        false,                                    true  }, // GLES extension.
+		{ "NV_instanced_arrays",                      false,                                    true  }, // GLES extension.
+		{ "NV_occlusion_query",                       false,                                    true  },
+		{ "NV_polygon_mode",                          false,                                    true  }, // GLES extension.
+		{ "NV_read_depth",                            false,                                    true  }, // GLES extension.
+		{ "NV_read_depth_stencil",                    false,                                    true  }, // GLES extension.
+		{ "NV_read_stencil",                          false,                                    true  }, // GLES extension.
+		{ "NV_texture_border_clamp",                  false,                                    true  }, // GLES extension.
 
-		{ "OES_copy_image",                           false,                             true  },
-		{ "OES_compressed_ETC1_RGB8_texture",         false,                             true  },
-		{ "OES_depth24",                              false,                             true  },
-		{ "OES_depth32",                              false,                             true  },
-		{ "OES_depth_texture",                        false,                             true  },
-		{ "OES_element_index_uint",                   false,                             true  },
-		{ "OES_fragment_precision_high",              false,                             true  },
-		{ "OES_fbo_render_mipmap",                    false,                             true  },
-		{ "OES_get_program_binary",                   false,                             true  },
-		{ "OES_required_internalformat",              false,                             true  },
-		{ "OES_packed_depth_stencil",                 false,                             true  },
-		{ "OES_read_format",                          false,                             true  },
-		{ "OES_rgb8_rgba8",                           false,                             true  },
-		{ "OES_standard_derivatives",                 false,                             true  },
-		{ "OES_texture_3D",                           false,                             true  },
-		{ "OES_texture_float",                        false,                             true  },
-		{ "OES_texture_float_linear",                 false,                             true  },
-		{ "OES_texture_npot",                         false,                             true  },
-		{ "OES_texture_half_float",                   false,                             true  },
-		{ "OES_texture_half_float_linear",            false,                             true  },
-		{ "OES_texture_stencil8",                     false,                             true  },
-		{ "OES_texture_storage_multisample_2d_array", false,                             true  },
-		{ "OES_texture_view",                         false,                             true  },
-		{ "OES_vertex_array_object",                  false,                             true  },
-		{ "OES_vertex_half_float",                    false,                             true  },
-		{ "OES_vertex_type_10_10_10_2",               false,                             true  },
+		{ "NVX_gpu_memory_info",                      false,                                    true  },
 
-		{ "WEBGL_color_buffer_float",                 false,                             true  },
-		{ "WEBGL_compressed_texture_etc1",            false,                             true  },
-		{ "WEBGL_compressed_texture_s3tc",            false,                             true  },
-		{ "WEBGL_compressed_texture_pvrtc",           false,                             true  },
-		{ "WEBGL_depth_texture",                      false,                             true  },
-		{ "WEBGL_draw_buffers",                       false,                             true  },
+		{ "OES_copy_image",                           BGFX_CONFIG_RENDERER_OPENGLES >= 32,      true  },
+		{ "OES_compressed_ETC1_RGB8_texture",         false,                                    true  },
+		{ "OES_depth24",                              false,                                    true  },
+		{ "OES_depth32",                              false,                                    true  },
+		{ "OES_depth_texture",                        false,                                    true  },
+		{ "OES_draw_buffers_indexed",                 BGFX_CONFIG_RENDERER_OPENGLES >= 32,      false },
+		{ "OES_element_index_uint",                   false,                                    true  },
+		{ "OES_fragment_precision_high",              false,                                    true  },
+		{ "OES_fbo_render_mipmap",                    false,                                    true  },
+		{ "OES_get_program_binary",                   false,                                    true  },
+		{ "OES_required_internalformat",              false,                                    true  },
+		{ "OES_packed_depth_stencil",                 false,                                    true  },
+		{ "OES_read_format",                          false,                                    true  },
+		{ "OES_rgb8_rgba8",                           false,                                    true  },
+		{ "OES_standard_derivatives",                 false,                                    true  },
+		{ "OES_texture_3D",                           false,                                    true  },
+		{ "OES_texture_border_clamp",                 BGFX_CONFIG_RENDERER_OPENGLES >= 32,      true  }, // GLES extension.
+		{ "OES_texture_cube_map_array",               BGFX_CONFIG_RENDERER_OPENGLES >= 32,      true  }, // GLES3.1 extension.
+		{ "OES_texture_float",                        false,                                    true  },
+		{ "OES_texture_float_linear",                 false,                                    true  },
+		{ "OES_texture_npot",                         false,                                    true  },
+		{ "OES_texture_half_float",                   false,                                    true  },
+		{ "OES_texture_half_float_linear",            false,                                    true  },
+		{ "OES_texture_stencil8",                     false,                                    true  },
+		{ "OES_texture_storage_multisample_2d_array", false,                                    true  },
+		{ "OES_texture_view",                         false,                                    true  },
+		{ "OES_vertex_array_object",                  false,                                    true  },
+		{ "OES_vertex_half_float",                    false,                                    true  },
+		{ "OES_vertex_type_10_10_10_2",               false,                                    true  },
 
-		{ "WEBKIT_EXT_texture_filter_anisotropic",    false,                             true  },
-		{ "WEBKIT_WEBGL_compressed_texture_s3tc",     false,                             true  },
-		{ "WEBKIT_WEBGL_depth_texture",               false,                             true  },
+		{ "WEBGL_color_buffer_float",                 false,                                    true  },
+		{ "WEBGL_compressed_texture_etc1",            false,                                    true  },
+		{ "WEBGL_compressed_texture_s3tc",            false,                                    true  },
+		{ "WEBGL_compressed_texture_pvrtc",           false,                                    true  },
+		{ "WEBGL_depth_texture",                      false,                                    true  },
+		{ "WEBGL_draw_buffers",                       false,                                    true  },
+
+		{ "WEBKIT_EXT_texture_filter_anisotropic",    false,                                    true  },
+		{ "WEBKIT_WEBGL_compressed_texture_s3tc",     false,                                    true  },
+		{ "WEBKIT_WEBGL_depth_texture",               false,                                    true  },
 	};
 	static_assert(Extension::Count == BX_COUNTOF(s_extension) );
 
@@ -1382,14 +1446,17 @@ namespace bgfx { namespace gl
 		}
 		else if (_target == GL_TEXTURE_2D_MULTISAMPLE)
 		{
-			glTexImage2DMultisample(
-				  _target
-				, _msaaQuality
-				, _internalFormat
-				, _width
-				, _height
-				, true
-				);
+			if (NULL != glTexImage2DMultisample)
+			{
+				glTexImage2DMultisample(
+					  _target
+					, _msaaQuality
+					, _internalFormat
+					, _width
+					, _height
+					, true
+					);
+			}
 		}
 		else
 		{
@@ -1792,6 +1859,11 @@ namespace bgfx { namespace gl
 			return false;
 		}
 
+		if (s_imageFormat[_format] != s_textureFormat[_format].m_internalFmt)
+		{
+			return false;
+		}
+
 		GLuint id;
 		GL_CHECK(glGenTextures(1, &id) );
 		GL_CHECK(glBindTexture(GL_TEXTURE_2D, id) );
@@ -1948,6 +2020,29 @@ namespace bgfx { namespace gl
 		return GL_DEPTH_STENCIL_ATTACHMENT;
 	}
 
+	static bool isReadPixelsSupported(TextureFormat::Enum _format)
+	{
+		if (!bimg::isDepth(bimg::TextureFormat::Enum(_format) )
+		||  BX_ENABLED(BGFX_CONFIG_RENDERER_OPENGL) )
+		{
+			return true;
+		}
+
+		const bimg::ImageBlockInfo& info = bimg::getBlockInfo(bimg::TextureFormat::Enum(_format) );
+
+		if (0 == info.depthBits)
+		{
+			return s_extension[Extension::NV_read_stencil].m_supported;
+		}
+
+		if (0 == info.stencilBits)
+		{
+			return s_extension[Extension::NV_read_depth].m_supported;
+		}
+
+		return s_extension[Extension::NV_read_depth_stencil].m_supported;
+	}
+
 	static bool isFramebufferFormatValid(
 		  TextureFormat::Enum _format
 		, bool _srgb = false
@@ -2054,6 +2149,7 @@ namespace bgfx { namespace gl
 
 	static void getFilters(uint32_t _flags, bool _hasMips, GLenum& _magFilter, GLenum& _minFilter)
 	{
+		_hasMips = _hasMips && 0 == (_flags & BGFX_SAMPLER_NO_MIPS);
 		const uint32_t mag = (_flags&BGFX_SAMPLER_MAG_MASK)>>BGFX_SAMPLER_MAG_SHIFT;
 		const uint32_t min = (_flags&BGFX_SAMPLER_MIN_MASK)>>BGFX_SAMPLER_MIN_SHIFT;
 		const uint32_t mip = (_flags&BGFX_SAMPLER_MIP_MASK)>>BGFX_SAMPLER_MIP_SHIFT;
@@ -2119,6 +2215,24 @@ namespace bgfx { namespace gl
 		bool m_detachShader;
 	};
 
+	static void glBindStorageBuffer(uint32_t _index, GLuint _id, uint32_t _bufferSize, uint32_t _offset, uint32_t _size)
+	{
+		const uint32_t offset = bx::min(_offset, _bufferSize);
+		const uint32_t range  = UINT32_MAX == _size
+			? _bufferSize - offset
+			: bx::min(_size, _bufferSize - offset)
+			;
+
+		if (0 == range
+		|| (0 == offset && range == _bufferSize) )
+		{
+			GL_CHECK(glBindBufferBase(GL_SHADER_STORAGE_BUFFER, _index, _id) );
+			return;
+		}
+
+		GL_CHECK(glBindBufferRange(GL_SHADER_STORAGE_BUFFER, _index, _id, offset, range) );
+	}
+
 	struct RendererContextGL : public RendererContextI
 	{
 		RendererContextGL()
@@ -2133,6 +2247,7 @@ namespace bgfx { namespace gl
 			, m_vao(0)
 			, m_blitSupported(false)
 			, m_blitFboSupported(false)
+			, m_textureMultisampleSupport(false)
 			, m_textureViewSupported(false)
 			, m_depthStencilTexturingSupported(false)
 			, m_readBackSupported(BX_ENABLED(BGFX_CONFIG_RENDERER_OPENGL) )
@@ -2140,12 +2255,12 @@ namespace bgfx { namespace gl
 			, m_vaoSupport(false)
 			, m_samplerObjectSupport(false)
 			, m_srgbWriteControlSupport(BX_ENABLED(BGFX_CONFIG_RENDERER_OPENGL) )
+			, m_srgbDecodeSupport(false)
 			, m_borderColorSupport(BX_ENABLED(BGFX_CONFIG_RENDERER_OPENGL) )
 			, m_programBinarySupport(false)
 			, m_textureSwizzleSupport(false)
 			, m_timerQuerySupport(false)
 			, m_occlusionQuerySupport(false)
-			, m_atocSupport(false)
 			, m_conservativeRasterSupport(false)
 			, m_flip(false)
 			, m_hash( (BX_PLATFORM_WINDOWS<<1) | BX_ARCH_64BIT)
@@ -2183,10 +2298,11 @@ namespace bgfx { namespace gl
 			}
 
 			m_fbh = BGFX_INVALID_HANDLE;
-			bx::memSet(m_uniforms, 0, sizeof(m_uniforms) );
-			bx::memSet(&m_resolution, 0, sizeof(m_resolution) );
+			bx::memSet(&m_mainSwapChain, 0, sizeof(m_mainSwapChain) );
 
-			setRenderContextSize(_init.resolution);
+			m_reset = _init.reset & ~BGFX_RESET_INTERNAL_FORCE;
+
+			setRenderContextSize(_init.swapChain);
 
 			m_vendor      = getGLString(GL_VENDOR);
 			m_renderer    = getGLString(GL_RENDERER);
@@ -2525,6 +2641,10 @@ namespace bgfx { namespace gl
 					}
 				}
 
+				s_textureFormat[TextureFormat::D24 ].m_supported = false;
+				s_textureFormat[TextureFormat::D16F].m_supported = false;
+				s_textureFormat[TextureFormat::D24F].m_supported = false;
+
 				if (BX_ENABLED(0) )
 				{
 					// Disable all compressed texture formats. For testing only.
@@ -2538,6 +2658,11 @@ namespace bgfx { namespace gl
 					|| !!(BGFX_CONFIG_RENDERER_OPENGLES >= 31)
 					|| s_extension[Extension::ARB_compute_shader].m_supported
 					;
+
+				if (s_extension[Extension::ARB_texture_multisample].m_supported)
+				{
+					m_textureMultisampleSupport = NULL != glTexImage2DMultisample;
+				}
 
 				for (uint32_t ii = 0; ii < TextureFormat::Count; ++ii)
 				{
@@ -2603,18 +2728,22 @@ namespace bgfx { namespace gl
 							: BGFX_CAPS_FORMAT_TEXTURE_NONE
 							;
 
-						maxSamples = 0;
-						glGetInternalformativ(GL_TEXTURE_2D_MULTISAMPLE
-							, s_textureFormat[ii].m_internalFmt
-							, GL_SAMPLES
-							, 1
-							, &maxSamples
-							);
-						err = getGlError();
-						supported |= 0 == err && maxSamples > 0
-							? BGFX_CAPS_FORMAT_TEXTURE_MSAA
-							: BGFX_CAPS_FORMAT_TEXTURE_NONE
-							;
+						if (m_textureMultisampleSupport)
+						{
+							maxSamples = 0;
+							glGetInternalformativ(
+								  GL_TEXTURE_2D_MULTISAMPLE
+								, s_textureFormat[ii].m_internalFmt
+								, GL_SAMPLES
+								, 1
+								, &maxSamples
+								);
+							err = getGlError();
+							supported |= 0 == err && maxSamples > 0
+								? BGFX_CAPS_FORMAT_TEXTURE_MSAA
+								: BGFX_CAPS_FORMAT_TEXTURE_NONE
+								;
+						}
 					}
 
 					g_caps.formats[ii] = supported;
@@ -2622,17 +2751,12 @@ namespace bgfx { namespace gl
 
 				g_caps.formats[TextureFormat::BGRA8] |= BGFX_CAPS_FORMAT_TEXTURE_BACKBUFFER;
 
-				g_caps.supported |= BGFX_CAPS_TEXTURE_3D;
-				g_caps.supported |= BGFX_CAPS_TEXTURE_COMPARE_ALL;
-				g_caps.supported |= BGFX_CAPS_VERTEX_ATTRIB_HALF;
-				g_caps.supported |= false
-					|| s_extension[Extension::ARB_vertex_type_2_10_10_10_rev].m_supported
-					|| s_extension[Extension::OES_vertex_type_10_10_10_2].m_supported
-					? BGFX_CAPS_VERTEX_ATTRIB_UINT10
-					: 0
-					;
-				g_caps.supported |= BGFX_CAPS_FRAGMENT_DEPTH;
-				g_caps.supported |= s_extension[Extension::ARB_draw_buffers_blend].m_supported
+				g_caps.supported |= BGFX_CAPS_VERTEX_ATTRIB_UINT10;
+				g_caps.supported |= (false
+					|| s_extension[Extension::ARB_draw_buffers_blend  ].m_supported
+					|| s_extension[Extension::OES_draw_buffers_indexed].m_supported
+					)
+					&& NULL != glBlendFunci
 					? BGFX_CAPS_BLEND_INDEPENDENT
 					: 0
 					;
@@ -2673,10 +2797,33 @@ namespace bgfx { namespace gl
 					: 0
 					;
 
+				if (BX_ENABLED(BGFX_CONFIG_RENDERER_OPENGLES) )
+				{
+					glPolygonMode = s_extension[Extension::NV_polygon_mode].m_supported
+						? glPolygonModeNV
+						: s_extension[Extension::ANGLE_polygon_mode].m_supported
+						? glPolygonModeANGLE
+						: NULL
+						;
+				}
+
 				if (BX_ENABLED(BX_PLATFORM_EMSCRIPTEN)
 				||  NULL == glPolygonMode)
 				{
 					glPolygonMode = stubPolygonMode;
+				}
+
+				glPolygonOffsetClamp = s_extension[Extension::ARB_polygon_offset_clamp].m_supported
+					? glPolygonOffsetClamp
+					: s_extension[Extension::EXT_polygon_offset_clamp].m_supported
+					? glPolygonOffsetClampEXT
+					: NULL
+					;
+
+				if (!BX_ENABLED(BGFX_CONFIG_RENDERER_OPENGLES >= 31)
+				&&  !s_extension[Extension::ARB_texture_multisample].m_supported)
+				{
+					glSampleMaski = NULL;
 				}
 
 				if (s_extension[Extension::ARB_copy_image].m_supported
@@ -2703,32 +2850,9 @@ namespace bgfx { namespace gl
 				m_blitFboSupported     = !m_blitSupported && BX_ENABLED(BGFX_CONFIG_RENDERER_OPENGLES);
 				m_readBackFboSupported = !m_readBackSupported;
 
-				g_caps.supported |= m_blitSupported || m_blitFboSupported
-					? BGFX_CAPS_TEXTURE_BLIT
-					: 0
-					;
-
-				g_caps.supported |= m_readBackSupported || m_readBackFboSupported
-					? BGFX_CAPS_TEXTURE_READ_BACK
-					: 0
-					;
-
 				g_caps.supported |= BGFX_CAPS_TEXTURE_EXTERNAL;
 
-				g_caps.supported |= false
-					|| s_extension[Extension::EXT_texture_array].m_supported
-					|| s_extension[Extension::EXT_gpu_shader4].m_supported
-					|| (BX_ENABLED(BGFX_CONFIG_RENDERER_OPENGLES) && !BX_ENABLED(BX_PLATFORM_EMSCRIPTEN) )
-					? BGFX_CAPS_TEXTURE_2D_ARRAY
-					: 0
-					;
 
-				g_caps.supported |= false
-					|| s_extension[Extension::EXT_gpu_shader4].m_supported
-					|| (BX_ENABLED(BGFX_CONFIG_RENDERER_OPENGLES) && !BX_ENABLED(BX_PLATFORM_EMSCRIPTEN) )
-					? BGFX_CAPS_VERTEX_ID
-					: 0
-					;
 
 				g_caps.supported |= false
 					|| BX_ENABLED(BGFX_CONFIG_RENDERER_OPENGL)
@@ -2740,6 +2864,7 @@ namespace bgfx { namespace gl
 				g_caps.supported |= false
 					|| s_extension[Extension::ARB_texture_cube_map_array].m_supported
 					|| s_extension[Extension::EXT_texture_cube_map_array].m_supported
+					|| s_extension[Extension::OES_texture_cube_map_array].m_supported
 					? BGFX_CAPS_TEXTURE_CUBE_ARRAY
 					: 0
 					;
@@ -2813,15 +2938,7 @@ namespace bgfx { namespace gl
 					&& NULL != glGetQueryObjectui64v
 					;
 
-				m_occlusionQuerySupport = false
-					|| BX_ENABLED(BGFX_CONFIG_RENDERER_OPENGLES) // Core since ES 3.0.
-					|| s_extension[Extension::ARB_occlusion_query        ].m_supported
-					|| s_extension[Extension::ARB_occlusion_query2       ].m_supported
-					|| s_extension[Extension::EXT_occlusion_query_boolean].m_supported
-					|| s_extension[Extension::NV_occlusion_query         ].m_supported
-					;
-
-				m_occlusionQuerySupport &= true
+				m_occlusionQuerySupport = true
 					&& NULL != glGenQueries
 					&& NULL != glDeleteQueries
 					&& NULL != glBeginQuery
@@ -2829,7 +2946,6 @@ namespace bgfx { namespace gl
 					&& NULL != glGetQueryObjectuiv
 					;
 
-				m_atocSupport = s_extension[Extension::ARB_multisample].m_supported;
 				m_conservativeRasterSupport = s_extension[Extension::NV_conservative_raster].m_supported;
 
 				// Note: ES 3.1 has image load/store in core, but read-write
@@ -2840,10 +2956,7 @@ namespace bgfx { namespace gl
 					;
 
 				g_caps.supported |= 0
-					| (m_atocSupport               ? BGFX_CAPS_ALPHA_TO_COVERAGE      : 0)
 					| (m_conservativeRasterSupport ? BGFX_CAPS_CONSERVATIVE_RASTER    : 0)
-					| (m_occlusionQuerySupport     ? BGFX_CAPS_OCCLUSION_QUERY        : 0)
-					| BGFX_CAPS_TEXTURE_COMPARE_LEQUAL
 					| (computeSupport              ? BGFX_CAPS_COMPUTE                : 0)
 					| (m_imageLoadStoreSupport     ? BGFX_CAPS_IMAGE_RW               : 0)
 					;
@@ -2854,8 +2967,12 @@ namespace bgfx { namespace gl
 				{
 					m_srgbWriteControlSupport = s_extension[Extension::EXT_sRGB_write_control].m_supported;
 
-					m_borderColorSupport = s_extension[Extension::NV_texture_border_clamp].m_supported;
-					s_textureAddress[BGFX_SAMPLER_U_BORDER>>BGFX_SAMPLER_U_SHIFT] = s_extension[Extension::NV_texture_border_clamp].m_supported
+					m_borderColorSupport = false
+						|| s_extension[Extension::EXT_texture_border_clamp].m_supported
+						|| s_extension[Extension::NV_texture_border_clamp ].m_supported
+						|| s_extension[Extension::OES_texture_border_clamp].m_supported
+						;
+					s_textureAddress[BGFX_SAMPLER_U_BORDER>>BGFX_SAMPLER_U_SHIFT] = m_borderColorSupport
 						? GL_CLAMP_TO_BORDER
 						: GL_CLAMP_TO_EDGE
 						;
@@ -2874,6 +2991,8 @@ namespace bgfx { namespace gl
 					GL_CHECK(glGetIntegerv(GL_MAX_SAMPLES, &m_maxMsaa) );
 				}
 
+				m_srgbDecodeSupport = s_extension[Extension::EXT_texture_sRGB_decode].m_supported;
+
 				if (s_extension[Extension::OES_read_format].m_supported
 				&& (s_extension[Extension::IMG_read_format].m_supported	|| s_extension[Extension::EXT_read_format_bgra].m_supported) )
 				{
@@ -2884,37 +3003,19 @@ namespace bgfx { namespace gl
 					m_readPixelsFmt = GL_RGBA;
 				}
 
-				if (BX_ENABLED(BGFX_CONFIG_RENDERER_OPENGLES))
+				if (NULL == glVertexAttribDivisor
+				||  NULL == glDrawArraysInstanced
+				||  NULL == glDrawElementsInstanced)
 				{
-					g_caps.supported |= BGFX_CAPS_INSTANCING;
-				}
-				else
-				{
-					if (s_extension[Extension::ANGLE_instanced_arrays].m_supported
-					||  s_extension[Extension::  ARB_instanced_arrays].m_supported
-					||  s_extension[Extension::  EXT_instanced_arrays].m_supported
-					|| (s_extension[Extension::   NV_instanced_arrays].m_supported && s_extension[Extension::NV_draw_instanced].m_supported)
-					   )
+					if (NULL != glVertexAttribDivisorNV
+					&&  NULL != glDrawArraysInstancedNV
+					&&  NULL != glDrawElementsInstancedNV)
 					{
-						if (NULL != glVertexAttribDivisor
-						&&  NULL != glDrawArraysInstanced
-						&&  NULL != glDrawElementsInstanced)
-						{
-							g_caps.supported |= BGFX_CAPS_INSTANCING;
-						}
-						else if (NULL != glVertexAttribDivisorNV
-							 &&  NULL != glDrawArraysInstancedNV
-							 &&  NULL != glDrawElementsInstancedNV)
-						{
-							glVertexAttribDivisor   = glVertexAttribDivisorNV;
-							glDrawArraysInstanced   = glDrawArraysInstancedNV;
-							glDrawElementsInstanced = glDrawElementsInstancedNV;
-
-							g_caps.supported |= BGFX_CAPS_INSTANCING;
-						}
+						glVertexAttribDivisor   = glVertexAttribDivisorNV;
+						glDrawArraysInstanced   = glDrawArraysInstancedNV;
+						glDrawElementsInstanced = glDrawElementsInstancedNV;
 					}
-
-					if (0 == (g_caps.supported & BGFX_CAPS_INSTANCING) )
+					else
 					{
 						glVertexAttribDivisor   = stubVertexAttribDivisor;
 						glDrawArraysInstanced   = stubDrawArraysInstanced;
@@ -3094,10 +3195,18 @@ namespace bgfx { namespace gl
 					FrameBufferGL& frameBuffer = m_frameBuffers[m_windows[ii].idx];
 					if (frameBuffer.m_needPresent)
 					{
+						if (0 != frameBuffer.m_fbo[0])
+						{
+							m_glctx.makeCurrent(frameBuffer.m_swapChain);
+							frameBuffer.blitSwapChainFbo();
+						}
+
 						m_glctx.swap(frameBuffer.m_swapChain);
 						frameBuffer.m_needPresent = false;
 					}
 				}
+
+				m_glctx.makeCurrent(NULL);
 
 				if (m_needPresent)
 				{
@@ -3209,6 +3318,103 @@ namespace bgfx { namespace gl
 			m_textures[_handle.idx].clear(_mip, _numMips, _layer, _numLayers);
 		}
 
+		static void convertD24S8FromGl(void* _data, uint32_t _width, uint32_t _height)
+		{
+			uint32_t* texels = (uint32_t*)_data;
+
+			for (uint32_t ii = 0, num = _width*_height; ii < num; ++ii)
+			{
+				const uint32_t packed = texels[ii];
+				texels[ii] = (packed >> 8) | (packed << 24);
+			}
+		}
+
+		bool readTextureCompressed(const TextureGL& _texture, void* _data, uint16_t _layer, uint8_t _mip)
+		{
+			if (!m_blitSupported
+			||  NULL == glCopyImageSubData)
+			{
+				return false;
+			}
+
+			const bimg::ImageBlockInfo& info = bimg::getBlockInfo(bimg::TextureFormat::Enum(_texture.m_textureFormat) );
+
+			GLenum internalFmt;
+			GLenum readFmt;
+
+			switch (info.blockSize)
+			{
+			case 8:
+				internalFmt = GL_RG32UI;
+				readFmt     = GL_RG_INTEGER;
+				break;
+
+			case 16:
+				internalFmt = GL_RGBA32UI;
+				readFmt     = GL_RGBA_INTEGER;
+				break;
+
+			default:
+				return false;
+			}
+
+			const uint32_t mipWidth  = bx::max<uint32_t>(1, _texture.m_width  >> _mip);
+			const uint32_t mipHeight = bx::max<uint32_t>(1, _texture.m_height >> _mip);
+
+			const uint32_t blocksW = (mipWidth  + info.blockWidth  - 1)/info.blockWidth;
+			const uint32_t blocksH = (mipHeight + info.blockHeight - 1)/info.blockHeight;
+
+			GLuint id = 0;
+			GL_CHECK(glGenTextures(1, &id) );
+			GL_CHECK(glBindTexture(GL_TEXTURE_2D, id) );
+			GL_CHECK(glTexStorage2D(GL_TEXTURE_2D, 1, internalFmt, blocksW, blocksH) );
+			GL_CHECK(glBindTexture(GL_TEXTURE_2D, 0) );
+
+			glCopyImageSubData(
+				  _texture.m_id
+				, _texture.m_target
+				, _mip
+				, 0
+				, 0
+				, _layer
+				, id
+				, GL_TEXTURE_2D
+				, 0
+				, 0
+				, 0
+				, 0
+				, mipWidth
+				, mipHeight
+				, 1
+				);
+
+			const bool copied = GL_NO_ERROR == getGlError();
+
+			bool result = false;
+
+			if (copied)
+			{
+				GLuint fbo = 0;
+				GL_CHECK(glGenFramebuffers(1, &fbo) );
+				GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, fbo) );
+				GL_CHECK(glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, id, 0) );
+				GL_CHECK(glReadBuffer(GL_COLOR_ATTACHMENT0) );
+
+				if (GL_FRAMEBUFFER_COMPLETE == glCheckFramebufferStatus(GL_FRAMEBUFFER) )
+				{
+					GL_CHECK(glReadPixels(0, 0, blocksW, blocksH, readFmt, GL_UNSIGNED_INT, _data) );
+					result = true;
+				}
+
+				GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, m_currentFbo) );
+				GL_CHECK(glDeleteFramebuffers(1, &fbo) );
+			}
+
+			GL_CHECK(glDeleteTextures(1, &id) );
+
+			return result;
+		}
+
 		void readTexture(TextureHandle _handle, void* _data, uint16_t _layer, uint8_t _mip) override
 		{
 			if (m_readBackSupported)
@@ -3216,12 +3422,12 @@ namespace bgfx { namespace gl
 				const TextureGL& texture = m_textures[_handle.idx];
 				const bool compressed    = bimg::isCompressed(bimg::TextureFormat::Enum(texture.m_textureFormat) );
 
+				const uint32_t mipWidth  = bx::max<uint32_t>(1, texture.m_width  >> _mip);
+				const uint32_t mipHeight = bx::max<uint32_t>(1, texture.m_height >> _mip);
+
 				if (texture.m_numLayers > 1
 				&&  NULL != glGetTextureSubImage)
 				{
-					const uint32_t mipWidth  = bx::max<uint32_t>(1, texture.m_width  >> _mip);
-					const uint32_t mipHeight = bx::max<uint32_t>(1, texture.m_height >> _mip);
-
 					bimg::TextureInfo ti;
 					bimg::imageGetSize(
 						  &ti
@@ -3288,12 +3494,24 @@ namespace bgfx { namespace gl
 
 					GL_CHECK(glBindTexture(texture.m_target, 0) );
 				}
+
+				if (TextureFormat::D24S8 == texture.m_textureFormat)
+				{
+					convertD24S8FromGl(_data, mipWidth, mipHeight);
+				}
 			}
 			else if (m_readBackFboSupported)
 			{
 				const TextureGL& texture = m_textures[_handle.idx];
 
-				if (!bimg::isCompressed(bimg::TextureFormat::Enum(texture.m_textureFormat) ) )
+				const GLenum attachment = attachmentFor(TextureFormat::Enum(texture.m_textureFormat) );
+				const bool   color      = GL_COLOR_ATTACHMENT0 == attachment;
+
+				if (bimg::isCompressed(bimg::TextureFormat::Enum(texture.m_textureFormat) ) )
+				{
+					readTextureCompressed(texture, _data, _layer, _mip);
+				}
+				else if (color || isReadPixelsSupported(TextureFormat::Enum(texture.m_textureFormat) ) )
 				{
 					const uint32_t mipWidth  = bx::max<uint32_t>(1, texture.m_width  >> _mip);
 					const uint32_t mipHeight = bx::max<uint32_t>(1, texture.m_height >> _mip);
@@ -3306,11 +3524,12 @@ namespace bgfx { namespace gl
 
 					GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer.m_fbo[0]) );
 
-					if (texture.m_numLayers > 1)
+					if (texture.m_numLayers > 1
+					||  GL_TEXTURE_3D == texture.m_target)
 					{
 						GL_CHECK(glFramebufferTextureLayer(
 							  GL_FRAMEBUFFER
-							, GL_COLOR_ATTACHMENT0
+							, attachment
 							, texture.m_id
 							, at[0].mip
 							, _layer
@@ -3320,26 +3539,51 @@ namespace bgfx { namespace gl
 					{
 						GL_CHECK(glFramebufferTexture2D(
 							  GL_FRAMEBUFFER
-							, GL_COLOR_ATTACHMENT0
-							, GL_TEXTURE_2D
+							, attachment
+							, texture.isCubeMap()
+								? GL_TEXTURE_CUBE_MAP_POSITIVE_X + _layer
+								: texture.m_target
 							, texture.m_id
 							, at[0].mip
 							) );
 					}
 
-					GL_CHECK(glReadBuffer(GL_COLOR_ATTACHMENT0) );
+					GL_CHECK(glReadBuffer(color ? GL_COLOR_ATTACHMENT0 : GL_NONE) );
 
 					if (GL_FRAMEBUFFER_COMPLETE == glCheckFramebufferStatus(GL_FRAMEBUFFER) )
 					{
+						const bool rgba8 = false
+							|| TextureFormat::RGBA8 == texture.m_textureFormat
+							|| TextureFormat::BGRA8 == texture.m_textureFormat
+							;
+
 						GL_CHECK(glReadPixels(
 							  0
 							, 0
 							, mipWidth
 							, mipHeight
-							, m_readPixelsFmt
-							, GL_UNSIGNED_BYTE
+							, rgba8 ? m_readPixelsFmt  : texture.m_fmt
+							, rgba8 ? GL_UNSIGNED_BYTE : texture.m_type
 							, _data
 							) );
+
+						if (GL_RGBA == m_readPixelsFmt
+						&&  TextureFormat::BGRA8 == texture.m_textureFormat)
+						{
+							bimg::imageSwizzleBgra8(
+								  _data
+								, mipWidth*4
+								, mipWidth
+								, mipHeight
+								, _data
+								, mipWidth*4
+								);
+						}
+
+						if (TextureFormat::D24S8 == texture.m_textureFormat)
+						{
+							convertD24S8FromGl(_data, mipWidth, mipHeight);
+						}
 					}
 
 					frameBuffer.destroy();
@@ -3347,6 +3591,46 @@ namespace bgfx { namespace gl
 					GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, m_currentFbo) );
 				}
 			}
+		}
+
+		GLuint getBufferId(Handle _handle) const
+		{
+			if (_handle.isIndexBuffer() )
+			{
+				return m_indexBuffers[_handle.idx].m_id;
+			}
+
+			return m_vertexBuffers[_handle.idx].m_id;
+		}
+
+		void readBuffer(Handle _handle, void* _data, uint32_t _offset, uint32_t _size) override
+		{
+			if (NULL == glMapBufferRange)
+			{
+				bx::memSet(_data, 0, _size);
+				return;
+			}
+
+			if (NULL != glMemoryBarrier)
+			{
+				GL_CHECK(glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT) );
+			}
+
+			GL_CHECK(glBindBuffer(GL_COPY_READ_BUFFER, getBufferId(_handle) ) );
+
+			const void* src = glMapBufferRange(GL_COPY_READ_BUFFER, _offset, _size, GL_MAP_READ_BIT);
+
+			if (NULL != src)
+			{
+				bx::memCopy(_data, src, _size);
+				GL_CHECK(glUnmapBuffer(GL_COPY_READ_BUFFER) );
+			}
+			else
+			{
+				bx::memSet(_data, 0, _size);
+			}
+
+			GL_CHECK(glBindBuffer(GL_COPY_READ_BUFFER, 0) );
 		}
 
 		void resizeTexture(TextureHandle _handle, uint16_t _width, uint16_t _height, uint8_t _numMips, uint16_t _numLayers) override
@@ -3376,11 +3660,6 @@ namespace bgfx { namespace gl
 			release(mem);
 		}
 
-		void overrideInternal(TextureHandle _handle, uintptr_t _ptr, uint16_t /*_layerIndex*/) override
-		{
-			m_textures[_handle.idx].overrideInternal(_ptr);
-		}
-
 		uintptr_t getInternal(TextureHandle _handle) override
 		{
 			return uintptr_t(m_textures[_handle.idx].m_id);
@@ -3396,12 +3675,16 @@ namespace bgfx { namespace gl
 			m_frameBuffers[_handle.idx].create(_num, _attachment);
 		}
 
-		void createFrameBuffer(FrameBufferHandle _handle, void* _nwh, uint32_t _width, uint32_t _height, TextureFormat::Enum _format, TextureFormat::Enum _depthFormat) override
+		void createFrameBuffer(FrameBufferHandle _handle, const SwapChain& _desc) override
 		{
-			BX_UNUSED(_format, _depthFormat);
 			uint16_t denseIdx = m_numWindows++;
 			m_windows[denseIdx] = _handle;
-			m_frameBuffers[_handle.idx].create(denseIdx, _nwh, _width, _height);
+			m_frameBuffers[_handle.idx].create(denseIdx, _desc);
+		}
+
+		void resizeFrameBuffer(FrameBufferHandle _handle, const SwapChain& _desc) override
+		{
+			m_frameBuffers[_handle.idx].update(_desc);
 		}
 
 		void destroyFrameBuffer(FrameBufferHandle _handle) override
@@ -3428,32 +3711,11 @@ namespace bgfx { namespace gl
 			}
 		}
 
-		void createUniform(UniformHandle _handle, UniformType::Enum _type, uint16_t _num, const char* _name) override
-		{
-			if (NULL != m_uniforms[_handle.idx])
-			{
-				bx::free(g_allocator, m_uniforms[_handle.idx]);
-			}
-
-			const uint32_t size = bx::alignUp(g_uniformTypeSize[_type]*_num, 16);
-			void* data = bx::alloc(g_allocator, size);
-			bx::memSet(data, 0, size);
-			m_uniforms[_handle.idx] = data;
-			m_uniformReg.add(_handle, _name);
-		}
-
-		void destroyUniform(UniformHandle _handle) override
-		{
-			bx::free(g_allocator, m_uniforms[_handle.idx]);
-			m_uniforms[_handle.idx] = NULL;
-			m_uniformReg.remove(_handle);
-		}
-
 		void requestScreenShot(FrameBufferHandle _handle, const char* _filePath) override
 		{
 			SwapChainGL* swapChain = NULL;
-			uint32_t width  = m_resolution.width;
-			uint32_t height = m_resolution.height;
+			uint32_t width  = m_mainSwapChain.width;
+			uint32_t height = m_mainSwapChain.height;
 
 			if (isValid(_handle) )
 			{
@@ -3461,6 +3723,12 @@ namespace bgfx { namespace gl
 				swapChain = frameBuffer.m_swapChain;
 				width  = frameBuffer.m_width;
 				height = frameBuffer.m_height;
+			}
+			else if (NULL == m_mainSwapChain.nwh
+			&&       NULL == g_platformData.context)
+			{
+				BX_TRACE("Unable to capture screenshot %s, no back buffer.", _filePath);
+				return;
 			}
 
 			if (0 == width
@@ -3471,6 +3739,17 @@ namespace bgfx { namespace gl
 			}
 
 			m_glctx.makeCurrent(swapChain);
+
+			if (isValid(_handle)
+			&&  NULL != m_frameBuffers[_handle.idx].m_swapChain
+			&&  0    != m_frameBuffers[_handle.idx].m_fbo[0])
+			{
+				FrameBufferGL& frameBuffer = m_frameBuffers[_handle.idx];
+
+				frameBuffer.resolveSwapChainFbo();
+
+				GL_CHECK(glBindFramebuffer(GL_READ_FRAMEBUFFER, frameBuffer.swapChainReadFbo() ) );
+			}
 
 			uint32_t length = width*height*4;
 			uint8_t* data = (uint8_t*)bx::alloc(g_allocator, length);
@@ -3501,6 +3780,9 @@ namespace bgfx { namespace gl
 				, true
 				);
 			bx::free(g_allocator, data);
+
+			m_glctx.makeCurrent(NULL);
+			GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, m_backBufferFbo) );
 		}
 
 		void updateViewName(ViewId _id, const char* _name) override
@@ -3509,11 +3791,6 @@ namespace bgfx { namespace gl
 				, BX_COUNTOF(s_viewName[0])-BGFX_CONFIG_MAX_VIEW_NAME_RESERVED
 				, _name
 				);
-		}
-
-		void updateUniform(uint16_t _loc, const void* _data, uint32_t _size) override
-		{
-			bx::memCopy(m_uniforms[_loc], _data, _size);
 		}
 
 		void invalidateOcclusionQuery(OcclusionQueryHandle _handle) override
@@ -3566,16 +3843,47 @@ namespace bgfx { namespace gl
 
 		void submitBlit(BlitState& _bs, uint16_t _view);
 
+		bool submitBlitBufferItem(const BlitItem& _bi);
+
 		void submitUniformCache(UniformCacheState& _ucs, uint16_t _view);
 
 		void submit(Frame* _render, const ClearQuad& _clearQuad, const MipGen& _mipGen, TextVideoMemBlitter& _textVideoMemBlitter) override;
 
-		void dbgTextRenderBegin(TextVideoMemBlitter& _blitter) override
+		void dbgTextRenderBegin(TextVideoMemBlitter& _blitter, FrameBufferHandle _handle) override
 		{
-			uint32_t width  = m_resolution.width;
-			uint32_t height = m_resolution.height;
+			uint32_t width;
+			uint32_t height;
 
-			GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, m_backBufferFbo) );
+			if (isValid(_handle) )
+			{
+				FrameBufferGL& frameBuffer = m_frameBuffers[_handle.idx];
+				width  = frameBuffer.m_width;
+				height = frameBuffer.m_height;
+
+				if (UINT16_MAX != frameBuffer.m_denseIdx)
+				{
+					m_glctx.makeCurrent(frameBuffer.m_swapChain);
+					frameBuffer.m_needPresent = true;
+					GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, 0) );
+				}
+				else
+				{
+					m_glctx.makeCurrent(NULL);
+					GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer.m_fbo[0]) );
+				}
+			}
+			else
+			{
+				width  = m_mainSwapChain.width;
+				height = m_mainSwapChain.height;
+
+				m_glctx.makeCurrent(NULL);
+				m_needPresent = true;
+				GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, m_backBufferFbo) );
+			}
+
+			BGFX_GL_PROFILER_BEGIN_LITERAL("debugtext", kColorFrame);
+
 			GL_CHECK(glViewport(0, 0, width, height) );
 
 			GL_CHECK(glDisable(GL_SCISSOR_TEST) );
@@ -3652,11 +3960,15 @@ namespace bgfx { namespace gl
 
 		void dbgTextRenderEnd(TextVideoMemBlitter& /*_blitter*/) override
 		{
+			BGFX_GL_PROFILER_END();
+
+			m_glctx.makeCurrent(NULL);
+			GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, m_backBufferFbo) );
 		}
 
-		void updateResolution(const Resolution& _resolution)
+		void updateResolution(const SwapChain& _swapChain, uint32_t _reset)
 		{
-			float maxAnisotropy = !!(_resolution.reset & BGFX_RESET_MAXANISOTROPY)
+			float maxAnisotropy = !!(_reset & BGFX_RESET_MAXANISOTROPY)
 				? m_maxAnisotropyDefault
 				: 0.0f
 				;
@@ -3667,37 +3979,26 @@ namespace bgfx { namespace gl
 				invalidateCache();
 			}
 
-			if (s_extension[Extension::ARB_depth_clamp].m_supported)
-			{
-				if (!!(_resolution.reset & BGFX_RESET_DEPTH_CLAMP) )
-				{
-					GL_CHECK(glEnable(GL_DEPTH_CLAMP) );
-				}
-				else
-				{
-					GL_CHECK(glDisable(GL_DEPTH_CLAMP) );
-				}
-			}
-
 			const uint32_t maskFlags = ~(0
 				| BGFX_RESET_MAXANISOTROPY
-				| BGFX_RESET_DEPTH_CLAMP
 				| BGFX_RESET_SUSPEND
 				);
 
-			if (m_resolution.width            !=  _resolution.width
-			||  m_resolution.height           !=  _resolution.height
-			|| (m_resolution.reset&maskFlags) != (_resolution.reset&maskFlags) )
+			if (m_mainSwapChain.width            !=  _swapChain.width
+			||  m_mainSwapChain.height           !=  _swapChain.height
+			||  m_mainSwapChain.nwh              !=  _swapChain.nwh
+			||  m_mainSwapChain.ndt              !=  _swapChain.ndt
+			|| (m_reset&maskFlags) != (_reset&maskFlags) )
 			{
-				uint32_t flags = _resolution.reset & (~BGFX_RESET_INTERNAL_FORCE);
+				uint32_t flags = _reset & (~BGFX_RESET_INTERNAL_FORCE);
 
-				m_resolution = _resolution;
-				m_resolution.reset = flags;
+				m_mainSwapChain = _swapChain;
+				m_reset = flags;
 
-				m_textVideoMem.resize(false, _resolution.width, _resolution.height);
+				m_textVideoMem.resize(false, _swapChain.width, _swapChain.height);
 				m_textVideoMem.clear();
 
-				setRenderContextSize(m_resolution);
+				setRenderContextSize(m_mainSwapChain);
 				updateCapture();
 
 				for (uint32_t ii = 0; ii < BX_COUNTOF(m_frameBuffers); ++ii)
@@ -3728,6 +4029,25 @@ namespace bgfx { namespace gl
 				);
 		}
 
+		bool isPendingResolve(TextureHandle _handle) const
+		{
+			if (isValid(m_fbh)
+			&&  m_rtMsaa)
+			{
+				const FrameBufferGL& frameBuffer = m_frameBuffers[m_fbh.idx];
+
+				for (uint32_t ii = 0; ii < frameBuffer.m_numTh; ++ii)
+				{
+					if (frameBuffer.m_attachment[ii].handle.idx == _handle.idx)
+					{
+						return true;
+					}
+				}
+			}
+
+			return false;
+		}
+
 		void resolveFrameBuffer(FrameBufferHandle _fbh)
 		{
 			if (isValid(m_fbh)
@@ -3735,6 +4055,12 @@ namespace bgfx { namespace gl
 			&&  m_rtMsaa)
 			{
 				FrameBufferGL& frameBuffer = m_frameBuffers[m_fbh.idx];
+
+				m_glctx.makeCurrent(UINT16_MAX != frameBuffer.m_denseIdx
+					? frameBuffer.m_swapChain
+					: NULL
+					);
+
 				frameBuffer.resolve();
 				m_rtMsaa = false;
 			}
@@ -3774,7 +4100,7 @@ namespace bgfx { namespace gl
 					GL_CHECK(glFrontFace(GL_CW) );
 
 					frameBuffer.m_needPresent = true;
-					m_currentFbo = 0;
+					m_currentFbo = frameBuffer.m_fbo[0];
 				}
 				else
 				{
@@ -3794,7 +4120,12 @@ namespace bgfx { namespace gl
 			{
 				if (0 == m_currentFbo)
 				{
-					if (0 != (m_resolution.reset & BGFX_RESET_SRGB_BACKBUFFER) )
+					const uint32_t surfaceFlags = isValid(_fbh)
+						? m_frameBuffers[_fbh.idx].m_desc.flags
+						: m_mainSwapChain.flags
+						;
+
+					if (0 != (surfaceFlags & BGFX_SWAP_CHAIN_SRGB_BACKBUFFER) )
 					{
 						GL_CHECK(glEnable(GL_FRAMEBUFFER_SRGB) );
 					}
@@ -3803,10 +4134,14 @@ namespace bgfx { namespace gl
 						GL_CHECK(glDisable(GL_FRAMEBUFFER_SRGB) );
 					}
 				}
-				else
+				else if (m_frameBuffers[_fbh.idx].isSrgbWrite() )
 				{
 					// actual sRGB write/blending determined by FBO's color attachments format
 					GL_CHECK(glEnable(GL_FRAMEBUFFER_SRGB) );
+				}
+				else
+				{
+					GL_CHECK(glDisable(GL_FRAMEBUFFER_SRGB) );
 				}
 			}
 
@@ -3836,7 +4171,7 @@ namespace bgfx { namespace gl
 			&&  1 < _msaa
 			&& !m_glctx.m_msaaContext)
 			{
-				GLenum storageFormat = m_resolution.reset & BGFX_RESET_SRGB_BACKBUFFER
+				GLenum storageFormat = m_mainSwapChain.flags & BGFX_SWAP_CHAIN_SRGB_BACKBUFFER
 					? GL_SRGB8_ALPHA8
 					: GL_RGBA8
 					;
@@ -4048,8 +4383,8 @@ namespace bgfx { namespace gl
 				GL_CHECK(glBindFramebuffer(GL_READ_FRAMEBUFFER, m_msaaBackBufferFbo) );
 				GL_CHECK(glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0) );
 
-				const uint32_t width  = m_resolution.width;
-				const uint32_t height = m_resolution.height;
+				const uint32_t width  = m_mainSwapChain.width;
+				const uint32_t height = m_mainSwapChain.height;
 				const GLenum filter = BX_ENABLED(BGFX_CONFIG_RENDERER_OPENGL)
 					? GL_NEAREST
 					: GL_LINEAR
@@ -4082,22 +4417,22 @@ namespace bgfx { namespace gl
 			}
 		}
 
-		void setRenderContextSize(const Resolution& _resolution)
+		void setRenderContextSize(const SwapChain& _swapChain)
 		{
 			if (!m_glctx.isValid() )
 			{
-				m_glctx.create(_resolution);
+				m_glctx.create(_swapChain, m_reset);
 			}
 			else
 			{
 				destroyMsaaFbo();
 
-				m_glctx.resize(_resolution);
+				m_glctx.resize(_swapChain, m_reset);
 
-				uint32_t msaa = (_resolution.reset & BGFX_RESET_MSAA_MASK)>>BGFX_RESET_MSAA_SHIFT;
+				uint32_t msaa = (_swapChain.flags & BGFX_SWAP_CHAIN_MSAA_MASK)>>BGFX_SWAP_CHAIN_MSAA_SHIFT;
 				msaa = bx::min(m_maxMsaa, msaa == 0 ? 0 : 1<<msaa);
 
-				createMsaaFbo(_resolution.width, _resolution.height, msaa);
+				createMsaaFbo(_swapChain.width, _swapChain.height, msaa);
 			}
 
 			m_flip = true;
@@ -4120,9 +4455,11 @@ namespace bgfx { namespace gl
 			if (0 == (BGFX_SAMPLER_INTERNAL_DEFAULT & _flags) )
 			{
 				const uint32_t index = (_flags & BGFX_SAMPLER_BORDER_COLOR_MASK) >> BGFX_SAMPLER_BORDER_COLOR_SHIFT;
+				const uint32_t srgb  = _flags & BGFX_SAMPLER_SRGB;
 
 				_flags &= ~BGFX_SAMPLER_RESERVED_MASK;
 				_flags &= BGFX_SAMPLER_BITS_MASK;
+				_flags |= srgb;
 				_flags |= _numMips<<BGFX_SAMPLER_RESERVED_SHIFT;
 
 				GLuint sampler;
@@ -4190,10 +4527,9 @@ namespace bgfx { namespace gl
 						GL_CHECK(glSamplerParameterfv(sampler, GL_TEXTURE_BORDER_COLOR, _rgba) );
 					}
 
-					if (0 != (_flags & (BGFX_SAMPLER_MIN_ANISOTROPIC|BGFX_SAMPLER_MAG_ANISOTROPIC) )
-					&&  0.0f < m_maxAnisotropy)
+					if (0.0f < m_maxAnisotropyDefault)
 					{
-						GL_CHECK(glSamplerParameterf(sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, m_maxAnisotropy) );
+						GL_CHECK(glSamplerParameterf(sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, getSamplerMaxAnisotropy(_flags, m_maxAnisotropy) ) );
 					}
 
 					const uint32_t cmpFunc = (_flags&BGFX_SAMPLER_COMPARE_MASK)>>BGFX_SAMPLER_COMPARE_SHIFT;
@@ -4205,6 +4541,14 @@ namespace bgfx { namespace gl
 					{
 						GL_CHECK(glSamplerParameteri(sampler, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE) );
 						GL_CHECK(glSamplerParameteri(sampler, GL_TEXTURE_COMPARE_FUNC, s_cmpFunc[cmpFunc]) );
+					}
+
+					if (m_srgbDecodeSupport)
+					{
+						GL_CHECK(glSamplerParameteri(sampler
+							, GL_TEXTURE_SRGB_DECODE_EXT
+							, 0 != srgb ? GL_DECODE_EXT : GL_SKIP_DECODE_EXT
+							) );
 					}
 
 					m_samplerStateCache.add(hash, SamplerGL{sampler});
@@ -4226,11 +4570,11 @@ namespace bgfx { namespace gl
 
 		void updateCapture()
 		{
-			if (m_resolution.reset&BGFX_RESET_CAPTURE)
+			if (m_reset&BGFX_RESET_CAPTURE)
 			{
-				m_captureSize = m_resolution.width*m_resolution.height*4;
+				m_captureSize = m_mainSwapChain.width*m_mainSwapChain.height*4;
 				m_capture = bx::realloc(g_allocator, m_capture, m_captureSize);
-				g_callback->captureBegin(m_resolution.width, m_resolution.height, m_resolution.width*4, TextureFormat::BGRA8, true);
+				g_callback->captureBegin(m_mainSwapChain.width, m_mainSwapChain.height, m_mainSwapChain.width*4, TextureFormat::BGRA8, true);
 			}
 			else
 			{
@@ -4244,8 +4588,8 @@ namespace bgfx { namespace gl
 			{
 				GL_CHECK(glReadPixels(0
 					, 0
-					, m_resolution.width
-					, m_resolution.height
+					, m_mainSwapChain.width
+					, m_mainSwapChain.height
 					, m_readPixelsFmt
 					, GL_UNSIGNED_BYTE
 					, m_capture
@@ -4255,11 +4599,11 @@ namespace bgfx { namespace gl
 				{
 					bimg::imageSwizzleBgra8(
 						  m_capture
-						, m_resolution.width*4
-						, m_resolution.width
-						, m_resolution.height
+						, m_mainSwapChain.width*4
+						, m_mainSwapChain.width
+						, m_mainSwapChain.height
 						, m_capture
-						, m_resolution.width*4
+						, m_mainSwapChain.width*4
 						);
 				}
 
@@ -4448,6 +4792,40 @@ namespace bgfx { namespace gl
 
 			if (1 == numMrt)
 			{
+				TextureFormat::Enum colorFormat = TextureFormat::Count;
+
+				if (isValid(fbh) )
+				{
+					const FrameBufferGL& fb = m_frameBuffers[fbh.idx];
+
+					for (uint32_t ii = 0; ii < fb.m_numTh; ++ii)
+					{
+						const Attachment& at = fb.m_attachment[ii];
+
+						if (isValid(at.handle) )
+						{
+							const TextureFormat::Enum format = TextureFormat::Enum(m_textures[at.handle.idx].m_textureFormat);
+
+							if (!bimg::isDepth(bimg::TextureFormat::Enum(format) ) )
+							{
+								colorFormat = format;
+								break;
+							}
+						}
+					}
+				}
+
+				const bx::EncodingType::Enum encoding = TextureFormat::Count != colorFormat
+					? bx::EncodingType::Enum(bimg::getBlockInfo(bimg::TextureFormat::Enum(colorFormat) ).encoding)
+					: bx::EncodingType::Count
+					;
+
+				const bool intColor = (bx::EncodingType::Int  == encoding && NULL != glClearBufferiv)
+					||                (bx::EncodingType::Uint == encoding && NULL != glClearBufferuiv)
+					;
+
+				GLint intClear[4] = {};
+
 				GLuint flags = 0;
 				if (BGFX_CLEAR_COLOR & _clear.m_flags)
 				{
@@ -4455,22 +4833,47 @@ namespace bgfx { namespace gl
 					{
 						uint8_t index = (uint8_t)bx::min(BGFX_CONFIG_MAX_COLOR_PALETTE-1, _clear.m_index[0]);
 						const float* rgba = _palette[index];
-						const float rr = rgba[0];
-						const float gg = rgba[1];
-						const float bb = rgba[2];
-						const float aa = rgba[3];
-						GL_CHECK(glClearColor(rr, gg, bb, aa) );
+
+						if (intColor)
+						{
+							intClear[0] = GLint(rgba[0]);
+							intClear[1] = GLint(rgba[1]);
+							intClear[2] = GLint(rgba[2]);
+							intClear[3] = GLint(rgba[3]);
+						}
+						else
+						{
+							const float rr = rgba[0];
+							const float gg = rgba[1];
+							const float bb = rgba[2];
+							const float aa = rgba[3];
+							GL_CHECK(glClearColor(rr, gg, bb, aa) );
+						}
 					}
 					else
 					{
-						float rr = _clear.m_index[0]*1.0f/255.0f;
-						float gg = _clear.m_index[1]*1.0f/255.0f;
-						float bb = _clear.m_index[2]*1.0f/255.0f;
-						float aa = _clear.m_index[3]*1.0f/255.0f;
-						GL_CHECK(glClearColor(rr, gg, bb, aa) );
+						if (intColor)
+						{
+							intClear[0] = _clear.m_index[0];
+							intClear[1] = _clear.m_index[1];
+							intClear[2] = _clear.m_index[2];
+							intClear[3] = _clear.m_index[3];
+						}
+						else
+						{
+							float rr = _clear.m_index[0]*1.0f/255.0f;
+							float gg = _clear.m_index[1]*1.0f/255.0f;
+							float bb = _clear.m_index[2]*1.0f/255.0f;
+							float aa = _clear.m_index[3]*1.0f/255.0f;
+							GL_CHECK(glClearColor(rr, gg, bb, aa) );
+						}
 					}
 
-					flags |= GL_COLOR_BUFFER_BIT;
+					if (!intColor)
+					{
+						flags |= GL_COLOR_BUFFER_BIT;
+					}
+
 					GL_CHECK(glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE) );
 				}
 
@@ -4488,11 +4891,31 @@ namespace bgfx { namespace gl
 					GL_CHECK(glStencilMask(0xff) );
 				}
 
-				if (0 != flags)
+				const bool clearColorInt = intColor && 0 != (BGFX_CLEAR_COLOR & _clear.m_flags);
+
+				if (0 != flags
+				||  clearColorInt)
 				{
 					GL_CHECK(glEnable(GL_SCISSOR_TEST) );
 					GL_CHECK(glScissor(_rect.m_x, rectY, _rect.m_width, _rect.m_height) );
-					GL_CHECK(glClear(flags) );
+
+					if (clearColorInt)
+					{
+						if (bx::EncodingType::Uint == encoding)
+						{
+							GL_CHECK(glClearBufferuiv(GL_COLOR, 0, (const GLuint*)intClear) );
+						}
+						else
+						{
+							GL_CHECK(glClearBufferiv(GL_COLOR, 0, intClear) );
+						}
+					}
+
+					if (0 != flags)
+					{
+						GL_CHECK(glClear(flags) );
+					}
+
 					GL_CHECK(glDisable(GL_SCISSOR_TEST) );
 				}
 			}
@@ -4716,8 +5139,6 @@ namespace bgfx { namespace gl
 		TextureGL m_textures[BGFX_CONFIG_MAX_TEXTURES];
 		VertexLayout m_vertexLayouts[BGFX_CONFIG_MAX_VERTEX_LAYOUTS];
 		FrameBufferGL m_frameBuffers[BGFX_CONFIG_MAX_FRAME_BUFFERS];
-		UniformRegistry m_uniformReg;
-		void* m_uniforms[BGFX_CONFIG_MAX_UNIFORMS];
 
 		TimerQueryGL m_gpuTimer;
 		OcclusionQueryGL m_occlusionQuery;
@@ -4732,7 +5153,8 @@ namespace bgfx { namespace gl
 		FrameBufferHandle m_fbh;
 		uint16_t m_fbDiscard;
 
-		Resolution m_resolution;
+		SwapChain m_mainSwapChain;
+		uint32_t  m_reset;
 		void* m_capture;
 		uint32_t m_captureSize;
 		float m_maxAnisotropy;
@@ -4742,6 +5164,7 @@ namespace bgfx { namespace gl
 		uint16_t m_maxLabelLen;
 		bool m_blitSupported;
 		bool m_blitFboSupported;
+		bool m_textureMultisampleSupport;
 		bool m_textureViewSupported;
 		bool m_depthStencilTexturingSupported;
 		bool m_readBackSupported;
@@ -4749,12 +5172,12 @@ namespace bgfx { namespace gl
 		bool m_vaoSupport;
 		bool m_samplerObjectSupport;
 		bool m_srgbWriteControlSupport;
+		bool m_srgbDecodeSupport;
 		bool m_borderColorSupport;
 		bool m_programBinarySupport;
 		bool m_textureSwizzleSupport;
 		bool m_timerQuerySupport;
 		bool m_occlusionQuerySupport;
-		bool m_atocSupport;
 		bool m_conservativeRasterSupport;
 		bool m_imageLoadStoreSupport;
 		bool m_flip;
@@ -5409,56 +5832,73 @@ namespace bgfx { namespace gl
 		bx::memCopy(m_unboundUsedAttrib, m_used, sizeof(m_unboundUsedAttrib) );
 	}
 
-	void ProgramGL::bindAttributes(const VertexLayout& _layout, uint32_t _baseVertex)
+	void ProgramGL::bindAttributes(const VertexLayout& _layout, uint32_t _baseVertex, bool _lastStream)
 	{
 		for (uint32_t ii = 0, iiEnd = m_usedCount; ii < iiEnd; ++ii)
 		{
 			Attrib::Enum attr = Attrib::Enum(m_used[ii]);
 			GLint loc = m_attributes[attr];
 
+			if (-1 == loc)
+			{
+				continue;
+			}
+
 			uint8_t num;
 			AttribType::Enum type;
 			bool normalized;
 			bool asInt;
-			_layout.decode(attr, num, type, normalized, asInt);
+			uint32_t baseVertex;
+
+			if (UINT16_MAX != _layout.m_attributes[attr])
+			{
+				_layout.decode(attr, num, type, normalized, asInt);
+				baseVertex = _baseVertex*_layout.m_stride + _layout.m_offset[attr];
+			}
+			else if (_lastStream
+				 &&  Attrib::Count != m_unboundUsedAttrib[ii])
+			{
+				const AttribDefault& ad = s_attribDefault[attr];
+				num        = ad.m_num;
+				type       = ad.m_type;
+				normalized = ad.m_normalized;
+				baseVertex = _baseVertex*_layout.m_stride;
+			}
+			else
+			{
+				continue;
+			}
 
 			if (AttribType::Uint10 == type)
 			{
 				num = 4; // always 4 components on GL
 			}
 
-			if (-1 != loc)
+			lazyEnableVertexAttribArray(loc);
+			GL_CHECK(glVertexAttribDivisor(loc, 0) );
+
+			if (!isFloat(type)
+			&&  !normalized)
 			{
-				if (UINT16_MAX != _layout.m_attributes[attr])
-				{
-					lazyEnableVertexAttribArray(loc);
-					GL_CHECK(glVertexAttribDivisor(loc, 0) );
-
-					uint32_t baseVertex = _baseVertex*_layout.m_stride + _layout.m_offset[attr];
-					if (!isFloat(type)
-					&&  !normalized)
-					{
-						GL_CHECK(glVertexAttribIPointer(loc
-							, num
-							, s_attribType[type]
-							, _layout.m_stride
-							, (void*)(uintptr_t)baseVertex)
-							);
-					}
-					else
-					{
-						GL_CHECK(glVertexAttribPointer(loc
-							, num
-							, s_attribType[type]
-							, normalized
-							, _layout.m_stride
-							, (void*)(uintptr_t)baseVertex)
-							);
-					}
-
-					m_unboundUsedAttrib[ii] = Attrib::Count;
-				}
+				GL_CHECK(glVertexAttribIPointer(loc
+					, num
+					, s_attribType[type]
+					, _layout.m_stride
+					, (void*)(uintptr_t)baseVertex)
+					);
 			}
+			else
+			{
+				GL_CHECK(glVertexAttribPointer(loc
+					, num
+					, s_attribType[type]
+					, normalized
+					, _layout.m_stride
+					, (void*)(uintptr_t)baseVertex)
+					);
+			}
+
+			m_unboundUsedAttrib[ii] = Attrib::Count;
 		}
 	}
 
@@ -5750,6 +6190,21 @@ namespace bgfx { namespace gl
 			m_requestedFormat  = uint8_t(imageContainer.m_format);
 			m_textureFormat    = uint8_t(getViableTextureFormat(imageContainer) );
 
+			if (0 != (_flags & BGFX_TEXTURE_SRGB_MUTABLE) )
+			{
+				if (s_renderGL->m_srgbDecodeSupport
+				&&  s_renderGL->m_srgbWriteControlSupport
+				&&  GL_ZERO != s_textureFormat[m_textureFormat].m_internalFmtSrgb)
+				{
+					_flags |= BGFX_TEXTURE_SRGB;
+				}
+				else
+				{
+					BX_WARN(false, "BGFX_TEXTURE_SRGB_MUTABLE is not supported for texture format %d", m_textureFormat);
+					_flags &= ~BGFX_TEXTURE_SRGB_MUTABLE;
+				}
+			}
+
 			const bool computeWrite = 0 != (_flags&BGFX_TEXTURE_COMPUTE_WRITE);
 			const bool srgb         = 0 != (_flags&BGFX_TEXTURE_SRGB);
 			const bool msaaSample   = 0 != (_flags&BGFX_TEXTURE_MSAA_SAMPLE);
@@ -5924,10 +6379,16 @@ namespace bgfx { namespace gl
 						if (compressed
 						&& !convert)
 						{
-							uint32_t size = bx::max<uint32_t>(1, (width  + 3)>>2)
-										  * bx::max<uint32_t>(1, (height + 3)>>2)
-										  * 4*4* bimg::getBitsPerPixel(bimg::TextureFormat::Enum(m_textureFormat) )/8
-										  ;
+							const uint32_t size = uint32_t(bimg::imageGetSize(
+								  NULL
+								, width
+								, height
+								, isVolume(imageContainer) ? depth : 1
+								, false
+								, false
+								, 1
+								, bimg::TextureFormat::Enum(m_textureFormat)
+								) );
 
 							GL_CHECK(compressedTexImage(imageTarget
 								, lod
@@ -6006,13 +6467,6 @@ namespace bgfx { namespace gl
 			GL_CHECK(glDeleteRenderbuffers(1, &m_rbo) );
 			m_rbo = 0;
 		}
-	}
-
-	void TextureGL::overrideInternal(uintptr_t _ptr)
-	{
-		destroy();
-		m_flags |= BGFX_SAMPLER_INTERNAL_SHARED;
-		m_id = (GLuint)_ptr;
 	}
 
 	void TextureGL::update(uint8_t _side, uint8_t _mip, const Rect& _rect, uint16_t _z, uint16_t _depth, uint16_t _pitch, const Memory* _mem)
@@ -6174,7 +6628,7 @@ namespace bgfx { namespace gl
 				;
 		}
 
-		const uint32_t flags = (0 != (BGFX_SAMPLER_INTERNAL_DEFAULT & _flags) ? m_flags : _flags) & BGFX_SAMPLER_BITS_MASK;
+		const uint32_t flags = (0 != (BGFX_SAMPLER_INTERNAL_DEFAULT & _flags) ? m_flags : _flags) & (BGFX_SAMPLER_BITS_MASK|BGFX_SAMPLER_SRGB);
 
 		bool hasBorderColor = false;
 		bx::HashMurmur2A murmur;
@@ -6229,10 +6683,9 @@ namespace bgfx { namespace gl
 				GL_CHECK(glTexParameterfv(target, GL_TEXTURE_BORDER_COLOR, _rgba) );
 			}
 
-			if (0 != (flags & (BGFX_SAMPLER_MIN_ANISOTROPIC|BGFX_SAMPLER_MAG_ANISOTROPIC) )
-			&&  0.0f < s_renderGL->m_maxAnisotropy)
+			if (0.0f < s_renderGL->m_maxAnisotropyDefault)
 			{
-				GL_CHECK(glTexParameterf(target, GL_TEXTURE_MAX_ANISOTROPY_EXT, s_renderGL->m_maxAnisotropy) );
+				GL_CHECK(glTexParameterf(target, GL_TEXTURE_MAX_ANISOTROPY_EXT, getSamplerMaxAnisotropy(flags, s_renderGL->m_maxAnisotropy) ) );
 			}
 
 			const uint32_t cmpFunc = (flags&BGFX_SAMPLER_COMPARE_MASK)>>BGFX_SAMPLER_COMPARE_SHIFT;
@@ -6244,6 +6697,19 @@ namespace bgfx { namespace gl
 			{
 				GL_CHECK(glTexParameteri(target, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE) );
 				GL_CHECK(glTexParameteri(target, GL_TEXTURE_COMPARE_FUNC, s_cmpFunc[cmpFunc]) );
+			}
+
+			if (s_renderGL->m_srgbDecodeSupport
+			&&  0 != (m_flags & BGFX_TEXTURE_SRGB) )
+			{
+				const bool decode = 0 == (m_flags & BGFX_TEXTURE_SRGB_MUTABLE)
+					|| 0 != (flags & BGFX_SAMPLER_SRGB)
+					;
+
+				GL_CHECK(glTexParameteri(target
+					, GL_TEXTURE_SRGB_DECODE_EXT
+					, decode ? GL_DECODE_EXT : GL_SKIP_DECODE_EXT
+					) );
 			}
 
 			m_currentSamplerHash = hash;
@@ -6287,11 +6753,12 @@ namespace bgfx { namespace gl
 	GLuint TextureGL::getViewId(uint8_t _firstMip, uint8_t _numMips, uint16_t _firstLayer, uint16_t _numLayers, GLenum* _target, bool _layered)
 	{
 		const uint16_t facesPerLayer = isCubeMap() ? 6 : 1;
+		const uint32_t rangeScale    = isCubeMap() && !_layered ? 6 : 1;
 		const uint8_t  firstMip      = bx::min<uint8_t>(_firstMip, uint8_t(m_numMips - 1) );
 		const uint8_t  numMips       = bx::min<uint8_t>(_numMips, uint8_t(m_numMips - firstMip) );
 		const uint16_t numLayers0    = uint16_t(bx::max<uint32_t>(m_numLayers, 1) * facesPerLayer);
-		const uint16_t firstLayer    = bx::min<uint16_t>(_firstLayer, uint16_t(numLayers0 - 1) );
-		const uint16_t numLayers     = bx::min<uint16_t>(_numLayers, uint16_t(numLayers0 - firstLayer) );
+		const uint16_t firstLayer    = uint16_t(bx::min<uint32_t>(uint32_t(_firstLayer) * rangeScale, numLayers0 - 1) );
+		const uint16_t numLayers     = uint16_t(bx::min<uint32_t>(uint32_t(_numLayers) * rangeScale, numLayers0 - firstLayer) );
 
 		const bool fullRange = 0 == firstMip
 			&& numMips   >= m_numMips
@@ -6389,13 +6856,18 @@ namespace bgfx { namespace gl
 			}
 		}
 
+		const uint32_t samplerFlags = 0 != (m_flags & BGFX_TEXTURE_SRGB_MUTABLE)
+			? flags
+			: flags | BGFX_SAMPLER_SRGB
+			;
+
 		if (s_renderGL->m_samplerObjectSupport)
 		{
-			s_renderGL->setSamplerState(_stage, m_numMips, flags, _palette[index]);
+			s_renderGL->setSamplerState(_stage, m_numMips, samplerFlags, _palette[index]);
 		}
 		else
 		{
-			setSamplerState(flags, _palette[index]);
+			setSamplerState(samplerFlags, _palette[index]);
 		}
 
 		if (id == m_id
@@ -6423,7 +6895,7 @@ namespace bgfx { namespace gl
 		const bool renderTarget = 0 != (m_flags&BGFX_TEXTURE_RT_MASK);
 		if (renderTarget
 		&&  1 < m_numMips
-		&&  0 != (_resolve & BGFX_RESOLVE_AUTO_GEN_MIPS) )
+		&&  0 != (_resolve & BGFX_ATTACHMENT_AUTO_GEN_MIPS) )
 		{
 			GL_CHECK(glBindTexture(m_target, m_id) );
 			GL_CHECK(glGenerateMipmap(m_target) );
@@ -6617,6 +7089,12 @@ namespace bgfx { namespace gl
 			bx::read(&reader, hashOut, &err);
 		}
 
+		{
+			uint32_t rawSrvMask, rawUavMask;
+			readRawBindings(&reader, rawSrvMask, rawUavMask, &err);
+			BX_UNUSED(rawSrvMask, rawUavMask);
+		}
+
 		uint16_t count;
 		bx::read(&reader, count, &err);
 
@@ -6770,6 +7248,8 @@ namespace bgfx { namespace gl
 
 	void FrameBufferGL::create(uint8_t _num, const Attachment* _attachment)
 	{
+		s_renderGL->m_glctx.makeCurrent(NULL);
+
 		GL_CHECK(glGenFramebuffers(1, &m_fbo[0]) );
 
 		m_denseIdx = UINT16_MAX;
@@ -6783,6 +7263,11 @@ namespace bgfx { namespace gl
 
 	void FrameBufferGL::postReset()
 	{
+		if (NULL != m_swapChain)
+		{
+			return;
+		}
+
 		if (0 != m_fbo[0])
 		{
 			GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, m_fbo[0]) );
@@ -6806,28 +7291,18 @@ namespace bgfx { namespace gl
 						m_height = bx::max(texture.m_height >> at.mip, 1);
 					}
 
-					GLenum attachment = GL_COLOR_ATTACHMENT0 + colorIdx;
-					bimg::TextureFormat::Enum format = bimg::TextureFormat::Enum(texture.m_textureFormat);
-					if (bimg::isDepth(format) )
+					const TextureFormat::Enum format = TextureFormat::Enum(texture.m_textureFormat);
+					GLenum attachment = attachmentFor(format);
+
+					if (GL_COLOR_ATTACHMENT0 == attachment)
 					{
-						const bimg::ImageBlockInfo& info = bimg::getBlockInfo(format);
-						if (0 < info.stencilBits)
+						attachment = GL_COLOR_ATTACHMENT0 + colorIdx;
+
+						if (Access::Write == at.access)
 						{
-							attachment = GL_DEPTH_STENCIL_ATTACHMENT;
+							buffers[colorIdx] = attachment;
+							++colorIdx;
 						}
-						else if (0 == info.depthBits)
-						{
-							attachment = GL_STENCIL_ATTACHMENT;
-						}
-						else
-						{
-							attachment = GL_DEPTH_ATTACHMENT;
-						}
-					}
-					else if (Access::Write == at.access)
-					{
-						buffers[colorIdx] = attachment;
-						++colorIdx;
 					}
 
 					if (0 != texture.m_rbo)
@@ -6841,9 +7316,11 @@ namespace bgfx { namespace gl
 					else
 					{
 						const bool cubeArray = GL_TEXTURE_CUBE_MAP_ARRAY == texture.m_target;
+						const bool texture3D = GL_TEXTURE_3D             == texture.m_target;
 
 						if ( (1 < texture.m_numLayers && !texture.isCubeMap() )
-						||   cubeArray)
+						||   cubeArray
+						||   texture3D)
 						{
 							if (1 < at.numLayers)
 							{
@@ -6923,26 +7400,9 @@ namespace bgfx { namespace gl
 
 						if (0 != texture.m_rbo && 0 != texture.m_id)
 						{
+							GLenum attachment = attachmentFor(TextureFormat::Enum(texture.m_textureFormat) );
 
-							GLenum attachment = GL_INVALID_ENUM;
-							bimg::TextureFormat::Enum format = bimg::TextureFormat::Enum(texture.m_textureFormat);
-							if (bimg::isDepth(format) )
-							{
-								const bimg::ImageBlockInfo& info = bimg::getBlockInfo(format);
-								if (0 < info.stencilBits)
-								{
-									attachment = GL_DEPTH_STENCIL_ATTACHMENT;
-								}
-								else if (0 == info.depthBits)
-								{
-									attachment = GL_STENCIL_ATTACHMENT;
-								}
-								else
-								{
-									attachment = GL_DEPTH_ATTACHMENT;
-								}
-							}
-							else
+							if (GL_COLOR_ATTACHMENT0 == attachment)
 							{
 								attachment = GL_COLOR_ATTACHMENT0 + colorIdx;
 								++colorIdx;
@@ -6970,19 +7430,298 @@ namespace bgfx { namespace gl
 		}
 	}
 
-	void FrameBufferGL::create(uint16_t _denseIdx, void* _nwh, uint32_t _width, uint32_t _height)
+	void FrameBufferGL::create(uint16_t _denseIdx, const SwapChain& _desc)
 	{
-		m_swapChain = s_renderGL->m_glctx.createSwapChain(_nwh, _width, _height);
-		m_width     = _width;
-		m_height    = _height;
+		m_swapChain = s_renderGL->m_glctx.createSwapChain(
+			  _desc.nwh
+			, int32_t(_desc.width)
+			, int32_t(_desc.height)
+			);
+		m_desc      = _desc;
+		m_width     = _desc.width;
+		m_height    = _desc.height;
 		m_numTh     = 0;
 		m_denseIdx  = _denseIdx;
 		m_needPresent = false;
+
+		createSwapChainFbo(_desc);
+	}
+
+	void FrameBufferGL::update(const SwapChain& _desc)
+	{
+		m_desc   = _desc;
+		m_width  = _desc.width;
+		m_height = _desc.height;
+
+		destroySwapChainFbo();
+		createSwapChainFbo(_desc);
+	}
+
+	void FrameBufferGL::createSwapChainFbo(const SwapChain& _desc)
+	{
+		uint32_t msaa = (_desc.flags & BGFX_SWAP_CHAIN_MSAA_MASK)>>BGFX_SWAP_CHAIN_MSAA_SHIFT;
+		msaa = bx::min<uint32_t>(s_renderGL->m_maxMsaa, 0 == msaa ? 1 : 1<<msaa);
+
+		if (BX_ENABLED(BGFX_CONFIG_RENDERER_OPENGLES) )
+		{
+			msaa = 1;
+		}
+
+		const bool srgb = 0 != (_desc.flags & BGFX_SWAP_CHAIN_SRGB_BACKBUFFER);
+
+		m_swapChainMsaa = msaa;
+
+		if (1 == msaa
+		&& !srgb
+		&& !isValid(_desc.depth) )
+		{
+			return;
+		}
+
+		const GLenum colorFormat = srgb ? GL_SRGB8_ALPHA8 : GL_RGBA8;
+
+		s_renderGL->m_glctx.makeCurrent(m_swapChain);
+
+		GL_CHECK(glGenFramebuffers(1, &m_fbo[0]) );
+		GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, m_fbo[0]) );
+
+		if (1 < msaa)
+		{
+			GL_CHECK(glGenRenderbuffers(1, &m_swapChainColorRbo) );
+			GL_CHECK(glBindRenderbuffer(GL_RENDERBUFFER, m_swapChainColorRbo) );
+			GL_CHECK(glRenderbufferStorageMultisample(
+				  GL_RENDERBUFFER
+				, msaa
+				, colorFormat
+				, _desc.width
+				, _desc.height
+				) );
+			GL_CHECK(glFramebufferRenderbuffer(
+				  GL_FRAMEBUFFER
+				, GL_COLOR_ATTACHMENT0
+				, GL_RENDERBUFFER
+				, m_swapChainColorRbo
+				) );
+		}
+		else
+		{
+			GL_CHECK(glGenTextures(1, &m_swapChainColorTex) );
+			GL_CHECK(glBindTexture(GL_TEXTURE_2D, m_swapChainColorTex) );
+			GL_CHECK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST) );
+			GL_CHECK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST) );
+			GL_CHECK(glTexImage2D(
+				  GL_TEXTURE_2D
+				, 0
+				, colorFormat
+				, _desc.width
+				, _desc.height
+				, 0
+				, GL_RGBA
+				, GL_UNSIGNED_BYTE
+				, NULL
+				) );
+			GL_CHECK(glFramebufferTexture2D(
+				  GL_FRAMEBUFFER
+				, GL_COLOR_ATTACHMENT0
+				, GL_TEXTURE_2D
+				, m_swapChainColorTex
+				, 0
+				) );
+		}
+
+		if (isValid(_desc.depth) )
+		{
+			const TextureGL& depth = s_renderGL->m_textures[_desc.depth.idx];
+
+			GL_CHECK(glFramebufferTexture2D(
+				  GL_FRAMEBUFFER
+				, attachmentFor(TextureFormat::Enum(depth.m_textureFormat) )
+				, depth.m_target
+				, depth.m_id
+				, 0
+				) );
+		}
+		else
+		{
+			GL_CHECK(glGenRenderbuffers(1, &m_swapChainDepthRbo) );
+			GL_CHECK(glBindRenderbuffer(GL_RENDERBUFFER, m_swapChainDepthRbo) );
+
+			if (1 < msaa)
+			{
+				GL_CHECK(glRenderbufferStorageMultisample(
+					  GL_RENDERBUFFER
+					, msaa
+					, GL_DEPTH24_STENCIL8
+					, _desc.width
+					, _desc.height
+					) );
+			}
+			else
+			{
+				GL_CHECK(glRenderbufferStorage(
+					  GL_RENDERBUFFER
+					, GL_DEPTH24_STENCIL8
+					, _desc.width
+					, _desc.height
+					) );
+			}
+
+			GL_CHECK(glFramebufferRenderbuffer(
+				  GL_FRAMEBUFFER
+				, GL_DEPTH_STENCIL_ATTACHMENT
+				, GL_RENDERBUFFER
+				, m_swapChainDepthRbo
+				) );
+		}
+
+		BX_ASSERT(GL_FRAMEBUFFER_COMPLETE == glCheckFramebufferStatus(GL_FRAMEBUFFER)
+			, "glCheckFramebufferStatus failed 0x%08x"
+			, glCheckFramebufferStatus(GL_FRAMEBUFFER)
+			);
+
+		if (1 < msaa)
+		{
+			GL_CHECK(glGenTextures(1, &m_swapChainColorTex) );
+			GL_CHECK(glBindTexture(GL_TEXTURE_2D, m_swapChainColorTex) );
+			GL_CHECK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST) );
+			GL_CHECK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST) );
+			GL_CHECK(glTexImage2D(
+				  GL_TEXTURE_2D
+				, 0
+				, colorFormat
+				, _desc.width
+				, _desc.height
+				, 0
+				, GL_RGBA
+				, GL_UNSIGNED_BYTE
+				, NULL
+				) );
+
+			GL_CHECK(glGenFramebuffers(1, &m_fbo[1]) );
+			GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, m_fbo[1]) );
+			GL_CHECK(glFramebufferTexture2D(
+				  GL_FRAMEBUFFER
+				, GL_COLOR_ATTACHMENT0
+				, GL_TEXTURE_2D
+				, m_swapChainColorTex
+				, 0
+				) );
+
+			BX_ASSERT(GL_FRAMEBUFFER_COMPLETE == glCheckFramebufferStatus(GL_FRAMEBUFFER)
+				, "glCheckFramebufferStatus failed 0x%08x"
+				, glCheckFramebufferStatus(GL_FRAMEBUFFER)
+				);
+		}
+
+		s_renderGL->m_glctx.makeCurrent(NULL);
+	}
+
+	void FrameBufferGL::destroySwapChainFbo()
+	{
+		if (0 == m_fbo[0])
+		{
+			return;
+		}
+
+		s_renderGL->m_glctx.makeCurrent(m_swapChain);
+
+		GL_CHECK(glDeleteFramebuffers(0 == m_fbo[1] ? 1 : 2, m_fbo) );
+
+		if (0 != m_swapChainColorTex)
+		{
+			GL_CHECK(glDeleteTextures(1, &m_swapChainColorTex) );
+		}
+
+		if (0 != m_swapChainColorRbo)
+		{
+			GL_CHECK(glDeleteRenderbuffers(1, &m_swapChainColorRbo) );
+		}
+
+		if (0 != m_swapChainDepthRbo)
+		{
+			GL_CHECK(glDeleteRenderbuffers(1, &m_swapChainDepthRbo) );
+		}
+
+		m_fbo[0] = 0;
+		m_fbo[1] = 0;
+		m_swapChainColorTex = 0;
+		m_swapChainColorRbo = 0;
+		m_swapChainDepthRbo = 0;
+		m_swapChainMsaa     = 1;
+
+		s_renderGL->m_glctx.makeCurrent(NULL);
+	}
+
+	void FrameBufferGL::resolveSwapChainFbo()
+	{
+		if (0 == m_fbo[1])
+		{
+			return;
+		}
+
+		GL_CHECK(glDisable(GL_SCISSOR_TEST) );
+		GL_CHECK(glBindFramebuffer(GL_READ_FRAMEBUFFER, m_fbo[0]) );
+		GL_CHECK(glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_fbo[1]) );
+		GL_CHECK(glBlitFramebuffer(
+			  0
+			, 0
+			, m_width
+			, m_height
+			, 0
+			, 0
+			, m_width
+			, m_height
+			, GL_COLOR_BUFFER_BIT
+			, GL_NEAREST
+			) );
+
+		GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, m_fbo[0]) );
+	}
+
+	void FrameBufferGL::blitSwapChainFbo()
+	{
+		if (0 == m_fbo[0])
+		{
+			return;
+		}
+
+		GL_CHECK(glDisable(GL_SCISSOR_TEST) );
+		GL_CHECK(glBindFramebuffer(GL_READ_FRAMEBUFFER, m_fbo[0]) );
+		GL_CHECK(glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0) );
+
+		if (BX_ENABLED(BGFX_CONFIG_RENDERER_OPENGLES) )
+		{
+			GL_CHECK(glUseProgram(s_renderGL->m_msaaBlitProgram) );
+			GL_CHECK(glActiveTexture(GL_TEXTURE0) );
+			GL_CHECK(glBindTexture(GL_TEXTURE_2D, m_swapChainColorTex) );
+			GL_CHECK(glDrawArrays(GL_TRIANGLES, 0, 3) );
+		}
+		else
+		{
+			GL_CHECK(glBlitFramebuffer(
+				  0
+				, 0
+				, m_width
+				, m_height
+				, 0
+				, 0
+				, m_width
+				, m_height
+				, GL_COLOR_BUFFER_BIT
+				, GL_NEAREST
+				) );
+		}
+
+		GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, 0) );
 	}
 
 	uint16_t FrameBufferGL::destroy()
 	{
-		if (0 != m_fbo[0])
+		if (NULL != m_swapChain)
+		{
+			destroySwapChainFbo();
+		}
+		else if (0 != m_fbo[0])
 		{
 			GL_CHECK(glDeleteFramebuffers(0 == m_fbo[1] ? 1 : 2, m_fbo) );
 			m_num = 0;
@@ -7001,6 +7740,23 @@ namespace bgfx { namespace gl
 		m_numTh = 0;
 
 		return denseIdx;
+	}
+
+	bool FrameBufferGL::isSrgbWrite() const
+	{
+		for (uint32_t ii = 0; ii < m_numTh; ++ii)
+		{
+			const Attachment& at = m_attachment[ii];
+
+			if (isValid(at.handle)
+			&&  0 != (s_renderGL->m_textures[at.handle.idx].m_flags & BGFX_TEXTURE_SRGB_MUTABLE)
+			&&  0 == (at.flags & BGFX_ATTACHMENT_SRGB) )
+			{
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	void FrameBufferGL::resolve()
@@ -7088,7 +7844,7 @@ namespace bgfx { namespace gl
 			if (isValid(at.handle) )
 			{
 				const TextureGL& texture = s_renderGL->m_textures[at.handle.idx];
-				texture.resolve(at.resolve);
+				texture.resolve(at.flags);
 			}
 		}
 	}
@@ -7222,6 +7978,107 @@ namespace bgfx { namespace gl
 			;
 	}
 
+	static bool blitMsaaResolve2D(
+		  const BlitItem& _bi
+		, const TextureGL& _src
+		, const TextureGL& _dst
+		, uint32_t _width
+		, uint32_t _height
+		, GLuint _currentFbo
+		)
+	{
+		if (GL_TEXTURE_2D_MULTISAMPLE != _src.m_target
+		||  GL_TEXTURE_2D             != _dst.m_target
+		||  1 < _bi.m_depth
+		||  NULL == glBlitFramebuffer)
+		{
+			return false;
+		}
+
+		GLuint fbo[2];
+		GL_CHECK(glGenFramebuffers(BX_COUNTOF(fbo), fbo) );
+
+		GL_CHECK(glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo[0]) );
+		GL_CHECK(glFramebufferTexture2D(GL_READ_FRAMEBUFFER
+			, GL_COLOR_ATTACHMENT0
+			, _src.m_target
+			, _src.m_id
+			, 0
+			) );
+
+		GL_CHECK(glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo[1]) );
+		GL_CHECK(glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER
+			, GL_COLOR_ATTACHMENT0
+			, _dst.m_target
+			, _dst.m_id
+			, _bi.m_dstMip
+			) );
+
+		GL_CHECK(glDisable(GL_SCISSOR_TEST) );
+		GL_CHECK(glBlitFramebuffer(
+			  _bi.m_srcX
+			, _bi.m_srcY
+			, _bi.m_srcX + _width
+			, _bi.m_srcY + _height
+			, _bi.m_dstX
+			, _bi.m_dstY
+			, _bi.m_dstX + _width
+			, _bi.m_dstY + _height
+			, GL_COLOR_BUFFER_BIT
+			, GL_NEAREST
+			) );
+
+		GL_CHECK(glDeleteFramebuffers(BX_COUNTOF(fbo), fbo) );
+		GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, _currentFbo) );
+
+		return true;
+	}
+
+	static void resolveMsaaRbo(const TextureGL& _src, GLuint _currentFbo)
+	{
+		if (0 == _src.m_rbo
+		||  NULL == glBlitFramebuffer
+		||  bimg::isDepth(bimg::TextureFormat::Enum(_src.m_textureFormat) ) )
+		{
+			return;
+		}
+
+		GLuint fbo[2];
+		GL_CHECK(glGenFramebuffers(BX_COUNTOF(fbo), fbo) );
+
+		GL_CHECK(glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo[0]) );
+		GL_CHECK(glFramebufferRenderbuffer(GL_READ_FRAMEBUFFER
+			, GL_COLOR_ATTACHMENT0
+			, GL_RENDERBUFFER
+			, _src.m_rbo
+			) );
+
+		GL_CHECK(glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo[1]) );
+		GL_CHECK(glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER
+			, GL_COLOR_ATTACHMENT0
+			, _src.m_target
+			, _src.m_id
+			, 0
+			) );
+
+		GL_CHECK(glDisable(GL_SCISSOR_TEST) );
+		GL_CHECK(glBlitFramebuffer(
+			  0
+			, 0
+			, _src.m_width
+			, _src.m_height
+			, 0
+			, 0
+			, _src.m_width
+			, _src.m_height
+			, GL_COLOR_BUFFER_BIT
+			, GL_NEAREST
+			) );
+
+		GL_CHECK(glDeleteFramebuffers(BX_COUNTOF(fbo), fbo) );
+		GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, _currentFbo) );
+	}
+
 	static bool blitCompressed2D(
 		  const BlitItem& _bi
 		, const TextureGL& _src
@@ -7313,6 +8170,185 @@ namespace bgfx { namespace gl
 		return true;
 	}
 
+	static void blitBuffer(GLuint _src, GLuint _dst, const BlitItem& _bi)
+	{
+		if (NULL == glCopyBufferSubData)
+		{
+			return;
+		}
+
+		if (NULL != glMemoryBarrier)
+		{
+			GL_CHECK(glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT) );
+		}
+
+		GL_CHECK(glBindBuffer(GL_COPY_READ_BUFFER,  _src) );
+		GL_CHECK(glBindBuffer(GL_COPY_WRITE_BUFFER, _dst) );
+
+		GL_CHECK(glCopyBufferSubData(
+			  GL_COPY_READ_BUFFER
+			, GL_COPY_WRITE_BUFFER
+			, _bi.m_srcOffset
+			, _bi.m_dstOffset
+			, _bi.m_size
+			) );
+
+		GL_CHECK(glBindBuffer(GL_COPY_READ_BUFFER,  0) );
+		GL_CHECK(glBindBuffer(GL_COPY_WRITE_BUFFER, 0) );
+	}
+
+	static void blitBufferToTexture(const TextureGL& _dst, GLuint _src, const BlitItem& _bi)
+	{
+		if (NULL == glBindBuffer)
+		{
+			return;
+		}
+
+		if (NULL != glMemoryBarrier)
+		{
+			GL_CHECK(glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT) );
+		}
+
+		GL_CHECK(glBindBuffer(GL_PIXEL_UNPACK_BUFFER, _src) );
+		GL_CHECK(glPixelStorei(GL_UNPACK_ALIGNMENT, 1) );
+		GL_CHECK(glBindTexture(_dst.m_target, _dst.m_id) );
+
+		uint32_t rowLength, imageHeight;
+		calcTextureRegionTexelPitch(
+			  rowLength
+			, imageHeight
+			, TextureFormat::Enum(_dst.m_textureFormat)
+			, _bi.m_rowPitch
+			, _bi.m_slicePitch
+			);
+
+		GL_CHECK(glPixelStorei(GL_UNPACK_ROW_LENGTH,   rowLength) );
+		GL_CHECK(glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, imageHeight) );
+
+		const GLvoid* data = (const GLvoid*)uintptr_t(_bi.m_srcOffset);
+
+		if (GL_TEXTURE_3D             == _dst.m_target
+		||  GL_TEXTURE_2D_ARRAY       == _dst.m_target
+		||  GL_TEXTURE_CUBE_MAP_ARRAY == _dst.m_target)
+		{
+			GL_CHECK(glTexSubImage3D(
+				  _dst.m_target
+				, _bi.m_dstMip
+				, _bi.m_dstX
+				, _bi.m_dstY
+				, _bi.m_dstZ
+				, _bi.m_width
+				, _bi.m_height
+				, bx::max<uint16_t>(1, _bi.m_depth)
+				, _dst.m_fmt
+				, _dst.m_type
+				, data
+				) );
+		}
+		else
+		{
+			GL_CHECK(glTexSubImage2D(
+				  GL_TEXTURE_CUBE_MAP == _dst.m_target
+					? GL_TEXTURE_CUBE_MAP_POSITIVE_X + _bi.m_dstZ
+					: _dst.m_target
+				, _bi.m_dstMip
+				, _bi.m_dstX
+				, _bi.m_dstY
+				, _bi.m_width
+				, _bi.m_height
+				, _dst.m_fmt
+				, _dst.m_type
+				, data
+				) );
+		}
+
+		GL_CHECK(glBindTexture(_dst.m_target, 0) );
+		GL_CHECK(glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, 0) );
+		GL_CHECK(glPixelStorei(GL_UNPACK_ROW_LENGTH,   0) );
+		GL_CHECK(glPixelStorei(GL_UNPACK_ALIGNMENT, 4) );
+		GL_CHECK(glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0) );
+	}
+
+	static void blitTextureToBuffer(GLuint _dst, const TextureGL& _src, const BlitItem& _bi)
+	{
+		if (NULL == glBindBuffer)
+		{
+			return;
+		}
+
+		if (NULL == glGetTextureSubImage)
+		{
+			BX_WARN(false, "Blit texture into buffer is not supported. glGetTextureSubImage is unavailable.");
+
+			return;
+		}
+
+		GL_CHECK(glBindBuffer(GL_PIXEL_PACK_BUFFER, _dst) );
+		GL_CHECK(glPixelStorei(GL_PACK_ALIGNMENT, 1) );
+
+		uint32_t rowLength, imageHeight;
+		calcTextureRegionTexelPitch(
+			  rowLength
+			, imageHeight
+			, TextureFormat::Enum(_src.m_textureFormat)
+			, _bi.m_rowPitch
+			, _bi.m_slicePitch
+			);
+
+		GL_CHECK(glPixelStorei(GL_PACK_ROW_LENGTH,   rowLength) );
+		GL_CHECK(glPixelStorei(GL_PACK_IMAGE_HEIGHT, imageHeight) );
+
+		GL_CHECK(glGetTextureSubImage(
+			  _src.m_id
+			, _bi.m_srcMip
+			, _bi.m_srcX
+			, _bi.m_srcY
+			, _bi.m_srcZ
+			, _bi.m_width
+			, _bi.m_height
+			, bx::max<uint16_t>(1, _bi.m_depth)
+			, _src.m_fmt
+			, _src.m_type
+			, _bi.m_size
+			, (GLvoid*)uintptr_t(_bi.m_dstOffset)
+			) );
+
+		GL_CHECK(glPixelStorei(GL_PACK_IMAGE_HEIGHT, 0) );
+		GL_CHECK(glPixelStorei(GL_PACK_ROW_LENGTH,   0) );
+		GL_CHECK(glPixelStorei(GL_PACK_ALIGNMENT, 4) );
+		GL_CHECK(glBindBuffer(GL_PIXEL_PACK_BUFFER, 0) );
+	}
+
+	bool RendererContextGL::submitBlitBufferItem(const BlitItem& _bi)
+	{
+		const bool srcIsBuffer = _bi.m_src.isBuffer();
+		const bool dstIsBuffer = _bi.m_dst.isBuffer();
+
+		if (srcIsBuffer
+		&&  dstIsBuffer)
+		{
+			blitBuffer(getBufferId(_bi.m_src), getBufferId(_bi.m_dst), _bi);
+
+			return true;
+		}
+
+		if (dstIsBuffer)
+		{
+			blitTextureToBuffer(getBufferId(_bi.m_dst), m_textures[_bi.m_src.idx], _bi);
+
+			return true;
+		}
+
+		if (srcIsBuffer)
+		{
+			blitBufferToTexture(m_textures[_bi.m_dst.idx], getBufferId(_bi.m_src), _bi);
+
+			return true;
+		}
+
+		return false;
+	}
+
 	void RendererContextGL::submitBlit(BlitState& _bs, uint16_t _view)
 	{
 		if (m_blitSupported)
@@ -7320,6 +8356,11 @@ namespace bgfx { namespace gl
 			while (_bs.hasItem(_view) )
 			{
 				const BlitItem& bi = _bs.advance();
+
+				if (submitBlitBufferItem(bi) )
+				{
+					continue;
+				}
 
 				const TextureGL& src = m_textures[bi.m_src.idx];
 				const TextureGL& dst = m_textures[bi.m_dst.idx];
@@ -7354,12 +8395,27 @@ namespace bgfx { namespace gl
 					}
 				}
 
-				GL_CHECK(glCopyImageSubData(src.m_id
-					, src.m_target
-					, bi.m_srcMip
+				if (blitMsaaResolve2D(bi, src, dst, width, height, m_currentFbo) )
+				{
+					continue;
+				}
+
+				const bool srcReadsMsaaRbo = 0 != src.m_rbo && dst.isMsaaSurface();
+
+				if (!srcReadsMsaaRbo
+				&&  0 == bi.m_srcMip
+				&&  isPendingResolve(TextureHandle{bi.m_src.idx}) )
+				{
+					resolveMsaaRbo(src, m_currentFbo);
+				}
+
+				GL_CHECK(glCopyImageSubData(
+					  srcReadsMsaaRbo ? src.m_rbo       : src.m_id
+					, srcReadsMsaaRbo ? GL_RENDERBUFFER : src.m_target
+					, srcReadsMsaaRbo ? 0               : bi.m_srcMip
 					, bi.m_srcX
 					, bi.m_srcY
-					, bi.m_srcZ
+					, srcReadsMsaaRbo ? 0               : bi.m_srcZ
 					, dst.m_id
 					, dst.m_target
 					, bi.m_dstMip
@@ -7378,12 +8434,23 @@ namespace bgfx { namespace gl
 			{
 				const BlitItem& bi = _bs.advance();
 
+				if (submitBlitBufferItem(bi) )
+				{
+					continue;
+				}
+
 				const TextureGL& src = m_textures[bi.m_src.idx];
 				const TextureGL& dst = m_textures[bi.m_dst.idx];
 
 				BX_ASSERT(0 == bi.m_srcZ && 0 == bi.m_dstZ && 1 >= bi.m_depth
 					, "Blitting 3D regions is not supported"
 					);
+
+				if (0 == bi.m_srcMip
+				&&  isPendingResolve(TextureHandle{bi.m_src.idx}) )
+				{
+					resolveMsaaRbo(src, m_currentFbo);
+				}
 
 				GLuint fbo;
 				GL_CHECK(glGenFramebuffers(1, &fbo) );
@@ -7418,6 +8485,15 @@ namespace bgfx { namespace gl
 				GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, m_currentFbo) );
 			}
 		}
+		else
+		{
+			while (_bs.hasItem(_view) )
+			{
+				const BlitItem& bi = _bs.advance();
+
+				submitBlitBufferItem(bi);
+			}
+		}
 	}
 
 	void RendererContextGL::submitUniformCache(UniformCacheState& _ucs, uint16_t _view)
@@ -7449,7 +8525,7 @@ namespace bgfx { namespace gl
 		GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, m_backBufferFbo) );
 		GL_CHECK(glFrontFace(GL_CW) );
 
-		updateResolution(_render->m_resolution);
+		updateResolution(_render->m_mainSwapChain, _render->m_reset);
 
 		int64_t timeBegin = bx::getHPCounter();
 		int64_t captureElapsed = 0;
@@ -7493,12 +8569,17 @@ namespace bgfx { namespace gl
 		SortKey key;
 		uint16_t view = UINT16_MAX;
 		FrameBufferHandle fbh = { BGFX_CONFIG_MAX_FRAME_BUFFERS };
+		bool currentDepthClamp = false; // GL default: depth clipping on (WebGPU unclippedDepth = false).
+		int32_t currentPolygonOffsetConstant = 0;
+		float   currentPolygonOffsetSlope    = 0.0f;
+		float   currentPolygonOffsetClamp    = 0.0f;
 
 		UniformCacheState ucs(_render);
 		BlitState bs(_render);
 
-		int32_t resolutionHeight = _render->m_resolution.height;
+		int32_t resolutionHeight = _render->m_mainSwapChain.height;
 		uint32_t blendFactor = 0;
+		uint32_t currentSampleMask = UINT32_MAX;
 
 		uint8_t primIndex;
 		{
@@ -7507,21 +8588,29 @@ namespace bgfx { namespace gl
 		}
 		PrimInfo prim = s_primInfo[primIndex];
 
+		const bool primitiveRestartSupported = true
+			&& !BX_ENABLED(BX_PLATFORM_EMSCRIPTEN)
+			&& (BX_ENABLED(BGFX_CONFIG_RENDERER_OPENGLES >= 30)
+				|| s_extension[Extension::ARB_ES3_compatibility].m_supported
+				);
+
 		GL_CHECK(glPolygonMode(GL_FRONT_AND_BACK
 			, _render->m_debug&BGFX_DEBUG_WIREFRAME
 			? GL_LINE
 			: GL_FILL
 			) );
 
-		bool wasCompute = false;
+		bool wasCompute     = false;
 		bool viewHasScissor = false;
+		bool ndcFlipRectY   = true;
 		Rect viewScissorRect;
 		viewScissorRect.clear();
 		uint16_t discardFlags = BGFX_CLEAR_NONE;
-		uint64_t ndcFrontCcw = 0;
-		bool ndcFlipRectY = true;
+		uint64_t ndcFrontCcw  = 0;
+		uint64_t stateMask    = UINT64_MAX;
+		uint64_t stencilMask  = UINT64_MAX;
 
-		const bool blendIndependentSupported = s_extension[Extension::ARB_draw_buffers_blend].m_supported;
+		const bool blendIndependentSupported = 0 != (g_caps.supported & BGFX_CAPS_BLEND_INDEPENDENT);
 		const bool computeSupported = false
 			|| (BX_ENABLED(BGFX_CONFIG_RENDERER_OPENGL) && s_extension[Extension::ARB_compute_shader].m_supported)
 			||  BX_ENABLED(BGFX_CONFIG_RENDERER_OPENGLES >= 31)
@@ -7588,8 +8677,18 @@ namespace bgfx { namespace gl
 					if (_render->m_view[view].m_fbh.idx != fbh.idx)
 					{
 						fbh = _render->m_view[view].m_fbh;
-						resolutionHeight = _render->m_resolution.height;
+						resolutionHeight = _render->m_mainSwapChain.height;
 						resolutionHeight = setFrameBuffer(fbh, resolutionHeight, discardFlags);
+
+						stateMask = isValid(fbh)
+							? getAttachmentStateMask(m_frameBuffers[fbh.idx].m_attachment, m_frameBuffers[fbh.idx].m_numTh)
+							: UINT64_MAX
+							;
+
+						stencilMask = isValid(fbh)
+							? getAttachmentStencilMask(m_frameBuffers[fbh.idx].m_attachment, m_frameBuffers[fbh.idx].m_numTh)
+							: UINT64_MAX
+							;
 					}
 
 					setViewType(view, "  ");
@@ -7715,7 +8814,7 @@ namespace bgfx { namespace gl
 								case Binding::IndexBuffer:
 									{
 										const IndexBufferGL& buffer = m_indexBuffers[bind.m_idx];
-										GL_CHECK(glBindBufferBase(GL_SHADER_STORAGE_BUFFER, ii, buffer.m_id) );
+										glBindStorageBuffer(ii, buffer.m_id, buffer.m_size, bind.m_offset, bind.m_size);
 										barrier |= GL_SHADER_STORAGE_BARRIER_BIT;
 										if (Access::Read != Access::Enum(bind.m_access) )
 										{
@@ -7730,7 +8829,7 @@ namespace bgfx { namespace gl
 								case Binding::VertexBuffer:
 									{
 										const VertexBufferGL& buffer = m_vertexBuffers[bind.m_idx];
-										GL_CHECK(glBindBufferBase(GL_SHADER_STORAGE_BUFFER, ii, buffer.m_id) );
+										glBindStorageBuffer(ii, buffer.m_id, buffer.m_size, bind.m_offset, bind.m_size);
 										barrier |= GL_SHADER_STORAGE_BARRIER_BIT;
 										if (Access::Read != Access::Enum(bind.m_access) )
 										{
@@ -7833,13 +8932,14 @@ namespace bgfx { namespace gl
 					}
 				}
 
-				const uint64_t newFlags = draw.m_stateFlags ^ ndcFrontCcw;
-				uint64_t changedFlags = currentState.m_stateFlags ^ newFlags;
+				const uint64_t newFlags   = (draw.m_stateFlags & stateMask) ^ ndcFrontCcw;
+				const uint32_t sampleMask = _render->m_view[view].m_sampleMask & draw.m_sampleMask;
+				uint64_t changedFlags     = currentState.m_stateFlags ^ newFlags;
 				currentState.m_stateFlags = newFlags;
 
-				const uint64_t newStencil = draw.m_stencil;
-				uint64_t changedStencil = currentState.m_stencil ^ draw.m_stencil;
-				currentState.m_stencil = newStencil;
+				const uint64_t newStencil = draw.m_stencil & stencilMask;
+				uint64_t changedStencil   = currentState.m_stencil ^ newStencil;
+				currentState.m_stencil    = newStencil;
 
 				if (resetState)
 				{
@@ -7933,6 +9033,77 @@ namespace bgfx { namespace gl
 					else
 					{
 						GL_CHECK(glDisable(GL_STENCIL_TEST) );
+					}
+				}
+
+				if (s_extension[Extension::ARB_depth_clamp].m_supported)
+				{
+					const bool depthClamp = (UINT16_MAX != draw.m_depthBias)
+						? _render->m_frameCache.m_depthBiasCache.m_cache[draw.m_depthBias].m_depthClamp
+						: _render->m_view[view].m_depthBias.m_depthClamp
+						;
+					if (currentDepthClamp != depthClamp)
+					{
+						currentDepthClamp = depthClamp;
+						if (depthClamp)
+						{
+							GL_CHECK(glEnable(GL_DEPTH_CLAMP) );
+						}
+						else
+						{
+							GL_CHECK(glDisable(GL_DEPTH_CLAMP) );
+						}
+					}
+				}
+
+				{
+					const DepthControl& depthControl = (UINT16_MAX != draw.m_depthBias)
+						? _render->m_frameCache.m_depthBiasCache.m_cache[draw.m_depthBias]
+						: _render->m_view[view].m_depthBias
+						;
+
+					if (currentPolygonOffsetConstant != depthControl.m_constant
+					||  currentPolygonOffsetSlope    != depthControl.m_slopeScale
+					||  currentPolygonOffsetClamp    != depthControl.m_clamp)
+					{
+						currentPolygonOffsetConstant = depthControl.m_constant;
+						currentPolygonOffsetSlope    = depthControl.m_slopeScale;
+						currentPolygonOffsetClamp    = depthControl.m_clamp;
+
+						if (0 == currentPolygonOffsetConstant
+						&&  0.0f == currentPolygonOffsetSlope)
+						{
+							GL_CHECK(glDisable(GL_POLYGON_OFFSET_FILL) );
+						}
+						else
+						{
+							if (NULL != glPolygonOffsetClamp)
+							{
+								GL_CHECK(glPolygonOffsetClamp(currentPolygonOffsetSlope, float(currentPolygonOffsetConstant), currentPolygonOffsetClamp) );
+							}
+							else
+							{
+								GL_CHECK(glPolygonOffset(currentPolygonOffsetSlope, float(currentPolygonOffsetConstant) ) );
+							}
+
+							GL_CHECK(glEnable(GL_POLYGON_OFFSET_FILL) );
+						}
+					}
+				}
+
+				if (currentSampleMask != sampleMask
+				&&  NULL != glSampleMaski)
+				{
+					currentSampleMask = sampleMask;
+
+					if (UINT32_MAX == currentSampleMask)
+					{
+						GL_CHECK(glDisable(GL_SAMPLE_MASK) );
+					}
+					else
+					{
+						GL_CHECK(glEnable(GL_SAMPLE_MASK) );
+						GL_CHECK(glSampleMaski(0, currentSampleMask) );
 					}
 				}
 
@@ -8036,15 +9207,15 @@ namespace bgfx { namespace gl
 								: glDisable(GL_LINE_SMOOTH)
 								);
 						}
+					}
 
-						if (m_conservativeRasterSupport
-						&&  BGFX_STATE_CONSERVATIVE_RASTER & changedFlags)
-						{
-							GL_CHECK(BGFX_STATE_CONSERVATIVE_RASTER & newFlags
-								? glEnable(GL_CONSERVATIVE_RASTERIZATION_NV)
-								: glDisable(GL_CONSERVATIVE_RASTERIZATION_NV)
-								);
-						}
+					if (m_conservativeRasterSupport
+					&&  BGFX_STATE_CONSERVATIVE_RASTER & changedFlags)
+					{
+						GL_CHECK(BGFX_STATE_CONSERVATIVE_RASTER & newFlags
+							? glEnable(GL_CONSERVATIVE_RASTERIZATION_NV)
+							: glDisable(GL_CONSERVATIVE_RASTERIZATION_NV)
+							);
 					}
 
 					if ( (BGFX_STATE_WRITE_A|BGFX_STATE_WRITE_RGB) & changedFlags)
@@ -8064,17 +9235,10 @@ namespace bgfx { namespace gl
 						) & changedFlags)
 					||  blendFactor != draw.m_rgba)
 					{
-						if (m_atocSupport)
-						{
-							if (BGFX_STATE_BLEND_ALPHA_TO_COVERAGE & newFlags)
-							{
-								GL_CHECK(glEnable(GL_SAMPLE_ALPHA_TO_COVERAGE) );
-							}
-							else
-							{
-								GL_CHECK(glDisable(GL_SAMPLE_ALPHA_TO_COVERAGE) );
-							}
-						}
+						GL_CHECK(BGFX_STATE_BLEND_ALPHA_TO_COVERAGE & newFlags
+							? glEnable(GL_SAMPLE_ALPHA_TO_COVERAGE)
+							: glDisable(GL_SAMPLE_ALPHA_TO_COVERAGE)
+							);
 
 						if ( ( (0
 							| BGFX_STATE_BLEND_EQUATION_MASK
@@ -8100,8 +9264,7 @@ namespace bgfx { namespace gl
 
 							const uint32_t numRt = getNumRt();
 
-							if (!BX_ENABLED(BGFX_CONFIG_RENDERER_OPENGL)
-							||  1 >= numRt
+							if (1 >= numRt
 							||  !independent)
 							{
 								if (enabled)
@@ -8181,6 +9344,19 @@ namespace bgfx { namespace gl
 					const uint64_t pt = newFlags&BGFX_STATE_PT_MASK;
 					primIndex = uint8_t(pt>>BGFX_STATE_PT_SHIFT);
 					prim = s_primInfo[primIndex];
+
+					if (primitiveRestartSupported)
+					{
+						if (BGFX_STATE_PT_TRISTRIP  == pt
+						||  BGFX_STATE_PT_LINESTRIP == pt)
+						{
+							GL_CHECK(glEnable(GL_PRIMITIVE_RESTART_FIXED_INDEX) );
+						}
+						else
+						{
+							GL_CHECK(glDisable(GL_PRIMITIVE_RESTART_FIXED_INDEX) );
+						}
+					}
 				}
 
 				bool programChanged = false;
@@ -8277,14 +9453,14 @@ namespace bgfx { namespace gl
 									case Binding::IndexBuffer:
 										{
 											const IndexBufferGL& buffer = m_indexBuffers[bind.m_idx];
-											GL_CHECK(glBindBufferBase(GL_SHADER_STORAGE_BUFFER, stage, buffer.m_id) );
+											glBindStorageBuffer(stage, buffer.m_id, buffer.m_size, bind.m_offset, bind.m_size);
 										}
 										break;
 
 									case Binding::VertexBuffer:
 										{
 											const VertexBufferGL& buffer = m_vertexBuffers[bind.m_idx];
-											GL_CHECK(glBindBufferBase(GL_SHADER_STORAGE_BUFFER, stage, buffer.m_id) );
+											glBindStorageBuffer(stage, buffer.m_id, buffer.m_size, bind.m_offset, bind.m_size);
 										}
 										break;
 									}
@@ -8377,6 +9553,8 @@ namespace bgfx { namespace gl
 
 								if (UINT32_MAX != draw.m_streamMask)
 								{
+									const uint8_t lastStream = uint8_t(31 - bx::countLeadingZeros<uint32_t>(draw.m_streamMask) );
+
 									for (BitMaskToIndexIteratorT it(draw.m_streamMask); !it.isDone(); it.next() )
 									{
 										const uint8_t idx = it.idx;
@@ -8386,7 +9564,7 @@ namespace bgfx { namespace gl
 											? draw.m_stream[idx].m_layoutHandle.idx
 											: vb.m_layoutHandle.idx;
 										GL_CHECK(glBindBuffer(GL_ARRAY_BUFFER, vb.m_id) );
-										program.bindAttributes(m_vertexLayouts[decl], draw.m_stream[idx].m_startVertex);
+										program.bindAttributes(m_vertexLayouts[decl], draw.m_stream[idx].m_startVertex, idx == lastStream);
 									}
 								}
 
@@ -8613,7 +9791,7 @@ namespace bgfx { namespace gl
 
 			if (0 < _render->m_numRenderItems)
 			{
-				if (0 != (m_resolution.reset & BGFX_RESET_FLUSH_AFTER_RENDER) )
+				if (0 != (m_reset & BGFX_RESET_FLUSH_AFTER_RENDER) )
 				{
 					GL_CHECK(glFlush() );
 				}
@@ -8672,6 +9850,7 @@ namespace bgfx { namespace gl
 		perfStats.numDraw       = statsKeyType[0];
 		perfStats.numCompute    = statsKeyType[1];
 		perfStats.numBlit       = _render->m_numBlitItems;
+		perfStats.numBlitRepack = _render->m_numBlitRepack;
 		perfStats.maxGpuLatency = maxGpuLatency;
 		perfStats.gpuFrameNum   = result.m_frameNum;
 		bx::memCopy(perfStats.numPrims, statsNumPrimsRendered, sizeof(perfStats.numPrims) );
@@ -8723,12 +9902,12 @@ namespace bgfx { namespace gl
 					, freq/frameTime
 					);
 
-				const uint32_t msaa = (m_resolution.reset&BGFX_RESET_MSAA_MASK)>>BGFX_RESET_MSAA_SHIFT;
+				const uint32_t msaa = (m_mainSwapChain.flags&BGFX_SWAP_CHAIN_MSAA_MASK)>>BGFX_SWAP_CHAIN_MSAA_SHIFT;
 				tvm.printf(10, pos++, 0x8b, "  Reset flags: [%c] vsync, [%c] MSAAx%d, [%c] MaxAnisotropy "
-					, !!(m_resolution.reset&BGFX_RESET_VSYNC) ? '\xfe' : ' '
+					, !!(m_reset&BGFX_RESET_VSYNC) ? '\xfe' : ' '
 					, 0 != msaa ? '\xfe' : ' '
 					, 1<<msaa
-					, !!(m_resolution.reset&BGFX_RESET_MAXANISOTROPY) ? '\xfe' : ' '
+					, !!(m_reset&BGFX_RESET_MAXANISOTROPY) ? '\xfe' : ' '
 					);
 
 				double elapsedCpuMs = double(frameTime)*toMs;
@@ -8856,17 +10035,13 @@ namespace bgfx { namespace gl
 				max = frameTime;
 			}
 
-			dbgTextSubmit(this, _textVideoMemBlitter, tvm);
-
 			BGFX_GL_PROFILER_END();
+
+			dbgTextSubmit(this, _textVideoMemBlitter, tvm, _render->m_debugFrameBuffer, _render->m_debugTextScale);
 		}
 		else if (_render->m_debug & BGFX_DEBUG_TEXT)
 		{
-			BGFX_GL_PROFILER_BEGIN_LITERAL("debugtext", kColorFrame);
-
-			dbgTextSubmit(this, _textVideoMemBlitter, _render->m_textVideoMem);
-
-			BGFX_GL_PROFILER_END();
+			dbgTextSubmit(this, _textVideoMemBlitter, _render->m_textVideoMem, _render->m_debugFrameBuffer, _render->m_debugTextScale);
 		}
 
 		if (0 != m_vao)

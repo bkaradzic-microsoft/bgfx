@@ -12,14 +12,17 @@
 	|| BX_PLATFORM_NX                                                                       \
 	|| BX_PLATFORM_RPI                                                                      \
 	) )                                                                                     \
-	|| (BGFX_CONFIG_RENDERER_OPENGLES && BX_PLATFORM_WINDOWS)
+	|| (BGFX_CONFIG_RENDERER_OPENGLES && BX_PLATFORM_WINDOWS && !BGFX_CONFIG_GL_USE_WGL)
 
 #define BGFX_USE_HTML5 (BGFX_CONFIG_RENDERER_OPENGLES && (0 \
 	|| BX_PLATFORM_EMSCRIPTEN                               \
 	) )
 
-#define BGFX_USE_WGL (BGFX_CONFIG_RENDERER_OPENGL && (0 \
-	|| BX_PLATFORM_WINDOWS                              \
+#define BGFX_USE_WGL ( (0                                        \
+	||  BGFX_CONFIG_RENDERER_OPENGL                              \
+	|| (BGFX_CONFIG_RENDERER_OPENGLES && BGFX_CONFIG_GL_USE_WGL) \
+	) && (0                                                      \
+	|| BX_PLATFORM_WINDOWS                                       \
 	) )
 
 #define BGFX_USE_GL_DYNAMIC_LIB (0 \
@@ -337,6 +340,18 @@ typedef double GLdouble;
 #ifndef GL_UNSIGNED_INT_10F_11F_11F_REV
 #	define GL_UNSIGNED_INT_10F_11F_11F_REV 0x8C3B
 #endif // GL_UNSIGNED_INT_10F_11F_11F_REV
+
+#ifndef GL_COPY_READ_BUFFER
+#	define GL_COPY_READ_BUFFER 0x8F36
+#endif // GL_COPY_READ_BUFFER
+
+#ifndef GL_COPY_WRITE_BUFFER
+#	define GL_COPY_WRITE_BUFFER 0x8F37
+#endif // GL_COPY_WRITE_BUFFER
+
+#ifndef GL_MAP_READ_BIT
+#	define GL_MAP_READ_BIT 0x0001
+#endif // GL_MAP_READ_BIT
 
 #ifndef GL_COMPRESSED_RGB_S3TC_DXT1_EXT
 #	define GL_COMPRESSED_RGB_S3TC_DXT1_EXT 0x83F0
@@ -735,6 +750,18 @@ typedef double GLdouble;
 #	define GL_UNPACK_ROW_LENGTH 0x0CF2
 #endif // GL_UNPACK_ROW_LENGTH
 
+#ifndef GL_UNPACK_IMAGE_HEIGHT
+#	define GL_UNPACK_IMAGE_HEIGHT 0x806E
+#endif // GL_UNPACK_IMAGE_HEIGHT
+
+#ifndef GL_PACK_ROW_LENGTH
+#	define GL_PACK_ROW_LENGTH 0x0D02
+#endif // GL_PACK_ROW_LENGTH
+
+#ifndef GL_PACK_IMAGE_HEIGHT
+#	define GL_PACK_IMAGE_HEIGHT 0x806C
+#endif // GL_PACK_IMAGE_HEIGHT
+
 #ifndef GL_DEPTH_STENCIL
 #	define GL_DEPTH_STENCIL 0x84F9
 #endif // GL_DEPTH_STENCIL
@@ -883,6 +910,10 @@ typedef double GLdouble;
 #	define GL_SHADER_IMAGE_ACCESS_BARRIER_BIT 0x00000020
 #endif // GL_SHADER_IMAGE_ACCESS_BARRIER_BIT
 
+#ifndef GL_BUFFER_UPDATE_BARRIER_BIT
+#	define GL_BUFFER_UPDATE_BARRIER_BIT 0x00000200
+#endif // GL_BUFFER_UPDATE_BARRIER_BIT
+
 #ifndef GL_SHADER_STORAGE_BARRIER_BIT
 #	define GL_SHADER_STORAGE_BARRIER_BIT 0x00002000
 #endif // GL_SHADER_STORAGE_BARRIER_BIT
@@ -890,6 +921,18 @@ typedef double GLdouble;
 #ifndef GL_SHADER_STORAGE_BUFFER
 #	define GL_SHADER_STORAGE_BUFFER 0x90D2
 #endif // GL_SHADER_STORAGE_BUFFER
+
+#ifndef GL_TEXTURE_SRGB_DECODE_EXT
+#	define GL_TEXTURE_SRGB_DECODE_EXT 0x8A48
+#endif // GL_TEXTURE_SRGB_DECODE_EXT
+
+#ifndef GL_DECODE_EXT
+#	define GL_DECODE_EXT 0x8A49
+#endif // GL_DECODE_EXT
+
+#ifndef GL_SKIP_DECODE_EXT
+#	define GL_SKIP_DECODE_EXT 0x8A4A
+#endif // GL_SKIP_DECODE_EXT
 
 #ifndef GL_IMAGE_1D
 #	define GL_IMAGE_1D 0x904C
@@ -1010,6 +1053,10 @@ typedef double GLdouble;
 #ifndef GL_SAMPLE_ALPHA_TO_COVERAGE
 #	define GL_SAMPLE_ALPHA_TO_COVERAGE 0x809E
 #endif // GL_SAMPLE_ALPHA_TO_COVERAGE
+
+#ifndef GL_SAMPLE_MASK
+#	define GL_SAMPLE_MASK 0x8E51
+#endif // GL_SAMPLE_MASK
 
 #ifndef GL_CONSERVATIVE_RASTERIZATION_NV
 #	define GL_CONSERVATIVE_RASTERIZATION_NV 0x9346
@@ -1149,6 +1196,10 @@ typedef double GLdouble;
 #ifndef GL_LINE_SMOOTH
 #	define GL_LINE_SMOOTH 0x0B20
 #endif // GL_LINE_SMOOTH
+
+#ifndef GL_PRIMITIVE_RESTART_FIXED_INDEX
+#	define GL_PRIMITIVE_RESTART_FIXED_INDEX 0x8D69
+#endif // GL_PRIMITIVE_RESTART_FIXED_INDEX
 
 #ifndef GL_TEXTURE_LOD_BIAS
 #	define GL_TEXTURE_LOD_BIAS 0x8501
@@ -1436,7 +1487,6 @@ namespace bgfx { namespace gl
 		bool init(GLenum _target, uint32_t _width, uint32_t _height, uint32_t _depth, uint8_t _numMips, uint64_t _flags, uint64_t _external = 0);
 		void create(const Memory* _mem, uint64_t _flags, uint8_t _skip, uint64_t _external = 0);
 		void destroy();
-		void overrideInternal(uintptr_t _ptr);
 		void update(uint8_t _side, uint8_t _mip, const Rect& _rect, uint16_t _z, uint16_t _depth, uint16_t _pitch, const Memory* _mem);
 		void clear(uint8_t _mip, uint8_t _numMips, uint16_t _layer, uint16_t _numLayers);
 		void setSamplerState(uint32_t _flags, const float _rgba[4]);
@@ -1459,6 +1509,14 @@ namespace bgfx { namespace gl
 				|| isCubeMap()
 				|| GL_TEXTURE_2D_ARRAY == m_target
 				|| GL_TEXTURE_3D       == m_target
+				;
+		}
+
+		bool isMsaaSurface() const
+		{
+			return 0
+				|| GL_TEXTURE_2D_MULTISAMPLE       == m_target
+				|| GL_TEXTURE_2D_MULTISAMPLE_ARRAY == m_target
 				;
 		}
 
@@ -1504,6 +1562,10 @@ namespace bgfx { namespace gl
 	{
 		FrameBufferGL()
 			: m_swapChain(NULL)
+			, m_swapChainColorTex(0)
+			, m_swapChainColorRbo(0)
+			, m_swapChainDepthRbo(0)
+			, m_swapChainMsaa(1)
 			, m_denseIdx(UINT16_MAX)
 			, m_num(0)
 			, m_needPresent(false)
@@ -1512,13 +1574,30 @@ namespace bgfx { namespace gl
 		}
 
 		void create(uint8_t _num, const Attachment* _attachment);
-		void create(uint16_t _denseIdx, void* _nwh, uint32_t _width, uint32_t _height);
+		void create(uint16_t _denseIdx, const SwapChain& _desc);
+		void update(const SwapChain& _desc);
 		void postReset();
 		uint16_t destroy();
 		void resolve();
 		void discard(uint16_t _flags);
+		bool isSrgbWrite() const;
+
+		void createSwapChainFbo(const SwapChain& _desc);
+		void destroySwapChainFbo();
+		void resolveSwapChainFbo();
+		void blitSwapChainFbo();
+
+		GLuint swapChainReadFbo() const
+		{
+			return 0 != m_fbo[1] ? m_fbo[1] : m_fbo[0];
+		}
 
 		SwapChainGL* m_swapChain;
+		SwapChain m_desc;
+		GLuint m_swapChainColorTex;
+		GLuint m_swapChainColorRbo;
+		GLuint m_swapChainDepthRbo;
+		uint32_t m_swapChainMsaa;
 		GLuint m_fbo[2];
 		uint32_t m_width;
 		uint32_t m_height;
@@ -1544,7 +1623,7 @@ namespace bgfx { namespace gl
 		void init();
 
 		void bindAttributesBegin();
-		void bindAttributes(const VertexLayout& _layout, uint32_t _baseVertex = 0);
+		void bindAttributes(const VertexLayout& _layout, uint32_t _baseVertex = 0, bool _lastStream = true);
 		void bindInstanceData(uint32_t _stride, uint32_t _baseVertex = 0) const;
 		void bindAttributesEnd();
 		void unbindInstanceData() const;
@@ -1653,8 +1732,8 @@ namespace bgfx { namespace gl
 					return false;
 				}
 
-				GLint available;
-				GL_CHECK(glGetQueryObjectiv(query.m_end
+				GLuint available;
+				GL_CHECK(glGetQueryObjectuiv(query.m_end
 					, GL_QUERY_RESULT_AVAILABLE
 					, &available
 					) );
