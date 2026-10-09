@@ -8960,23 +8960,44 @@ VK_DESTROY
 					);
 		}
 
-		VkCompositeAlphaFlagBitsKHR compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-
-		if (m_desc.flags & BGFX_SWAP_CHAIN_TRANSPARENT_BACKBUFFER)
+		static const VkCompositeAlphaFlagBitsKHR s_compositeAlphaOpaque[] =
 		{
-			if (surfaceCapabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR)
+			VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+			VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR,
+			VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
+			VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR,
+		};
+
+		static const VkCompositeAlphaFlagBitsKHR s_compositeAlphaTransparent[] =
+		{
+			VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR,
+			VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
+			VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR,
+			VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+		};
+
+		const VkCompositeAlphaFlagBitsKHR* compositeAlphaPreference = (m_desc.flags & BGFX_SWAP_CHAIN_TRANSPARENT_BACKBUFFER)
+			? s_compositeAlphaTransparent
+			: s_compositeAlphaOpaque
+			;
+
+		// Not all surfaces support opaque composite alpha (e.g. Android only reports inherit).
+		// Pick the first preferred mode that the surface supports.
+		VkCompositeAlphaFlagBitsKHR compositeAlpha = compositeAlphaPreference[0];
+
+		for (uint32_t ii = 0; ii < BX_COUNTOF(s_compositeAlphaOpaque); ++ii)
+		{
+			if (surfaceCapabilities.supportedCompositeAlpha & compositeAlphaPreference[ii])
 			{
-				compositeAlpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
-			}
-			else if (surfaceCapabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR)
-			{
-				compositeAlpha = VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR;
-			}
-			else if (surfaceCapabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR)
-			{
-				compositeAlpha = VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR;
+				compositeAlpha = compositeAlphaPreference[ii];
+				break;
 			}
 		}
+
+		BX_WARN(0 != (surfaceCapabilities.supportedCompositeAlpha & compositeAlpha)
+			, "Create swapchain: No supported composite alpha mode (supported: 0x%x)."
+			, surfaceCapabilities.supportedCompositeAlpha
+			);
 
 		const VkImageUsageFlags imageUsageMask = 0
 			| VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
