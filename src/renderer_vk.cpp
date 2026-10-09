@@ -3478,7 +3478,7 @@ VK_IMPORT_DEVICE
 					VK_CHECK(createReadbackBuffer(m_captureSize, &m_captureBuffer, &m_captureMemory) );
 				}
 
-				g_callback->captureBegin(m_mainSwapChain.width, m_mainSwapChain.height, pitch, m_mainSwapChain.formatColor, false);
+				g_callback->captureBegin(m_mainSwapChain.width, m_mainSwapChain.height, pitch, m_backBuffer.m_swapChain.m_colorFormat, false);
 			}
 		}
 
@@ -8926,7 +8926,7 @@ VK_DESTROY
 		const VkColorSpaceKHR surfaceColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
 
 		const bool srgb = !!(m_desc.flags & BGFX_SWAP_CHAIN_SRGB_BACKBUFFER);
-		m_colorFormat = m_desc.formatColor;
+		m_colorFormat = findSurfaceFormat(m_desc.formatColor, surfaceColorSpace, srgb);
 		m_depthFormat = bgfx::TextureFormat::UnknownDepth;
 
 		if (TextureFormat::Count == m_colorFormat)
@@ -9447,6 +9447,111 @@ VK_DESTROY
 		}
 
 		return idx;
+	}
+
+	TextureFormat::Enum SwapChainVK::findSurfaceFormat(TextureFormat::Enum _format, VkColorSpaceKHR _colorSpace, bool _srgb)
+	{
+		BGFX_PROFILER_SCOPE("SwapChainVK::findSurfaceFormat", kColorFrame);
+
+		const VkPhysicalDevice physicalDevice = s_renderVK->m_physicalDevice;
+
+		uint32_t numSurfaceFormats;
+		VkResult result = vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, m_surface, &numSurfaceFormats, NULL);
+
+		if (VK_SUCCESS != result
+		||  0 == numSurfaceFormats)
+		{
+			BX_TRACE("findSurfaceFormat error: vkGetPhysicalDeviceSurfaceFormatsKHR failed %d: %s.", result, getName(result) );
+			return _format;
+		}
+
+		VkSurfaceFormatKHR* surfaceFormats = (VkSurfaceFormatKHR*)BX_STACK_ALLOC(numSurfaceFormats * sizeof(VkSurfaceFormatKHR) );
+		result = vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, m_surface, &numSurfaceFormats, surfaceFormats);
+
+		if (VK_SUCCESS != result)
+		{
+			BX_TRACE("findSurfaceFormat error: vkGetPhysicalDeviceSurfaceFormatsKHR failed %d: %s.", result, getName(result) );
+			return _format;
+		}
+
+		// Surface doesn't have a preferred format, any format can be used.
+		if (1 == numSurfaceFormats
+		&&  VK_FORMAT_UNDEFINED == surfaceFormats[0].format)
+		{
+			return _format;
+		}
+
+		// Prefer requested format, then common 8-bit formats (Android surfaces don't support BGRA8),
+		// and then any other format the surface supports.
+		const TextureFormat::Enum preferredFormats[] =
+		{
+			_format,
+			TextureFormat::BGRA8,
+			TextureFormat::RGBA8,
+		};
+
+		for (uint32_t ii = 0; ii < BX_COUNTOF(preferredFormats); ++ii)
+		{
+			const TextureFormat::Enum format = preferredFormats[ii];
+
+			if (TextureFormat::Count == format)
+			{
+				continue;
+			}
+
+			const VkFormat vkFormat = _srgb
+				? s_textureFormat[format].m_fmtSrgb
+				: s_textureFormat[format].m_fmt
+				;
+
+			if (VK_FORMAT_UNDEFINED == vkFormat)
+			{
+				continue;
+			}
+
+			for (uint32_t jj = 0; jj < numSurfaceFormats; ++jj)
+			{
+				if (_colorSpace == surfaceFormats[jj].colorSpace
+				&&  vkFormat    == surfaceFormats[jj].format)
+				{
+					BX_WARN(format == _format
+						, "findSurfaceFormat: Surface format %s is not supported, using %s instead."
+						, TextureFormat::Count == _format ? "Count" : bimg::getName(bimg::TextureFormat::Enum(_format) )
+						, bimg::getName(bimg::TextureFormat::Enum(format) )
+						);
+					return format;
+				}
+			}
+		}
+
+		for (uint32_t jj = 0; jj < numSurfaceFormats; ++jj)
+		{
+			if (_colorSpace != surfaceFormats[jj].colorSpace)
+			{
+				continue;
+			}
+
+			for (uint32_t ii = TextureFormat::Unknown+1; ii < TextureFormat::UnknownDepth; ++ii)
+			{
+				const VkFormat vkFormat = _srgb
+					? s_textureFormat[ii].m_fmtSrgb
+					: s_textureFormat[ii].m_fmt
+					;
+
+				if (VK_FORMAT_UNDEFINED != vkFormat
+				&&  vkFormat == surfaceFormats[jj].format)
+				{
+					BX_TRACE("findSurfaceFormat: Surface format %s is not supported, using %s instead."
+						, TextureFormat::Count == _format ? "Count" : bimg::getName(bimg::TextureFormat::Enum(_format) )
+						, bimg::getName(bimg::TextureFormat::Enum(ii) )
+						);
+					return TextureFormat::Enum(ii);
+				}
+			}
+		}
+
+		BX_TRACE("findSurfaceFormat error: No supported surface format found.");
+		return TextureFormat::Count;
 	}
 
 	bool SwapChainVK::acquire(VkCommandBuffer _commandBuffer, bool _block)
