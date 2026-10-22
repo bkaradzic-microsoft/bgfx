@@ -8251,8 +8251,14 @@ namespace bgfx { namespace gl
 						}
 						else
 						{
-							const GLenum drawBuffer = GL_COLOR_ATTACHMENT0 + colorIdx;
-							GL_CHECK(glDrawBuffers(1, &drawBuffer) );
+							// GLES requires draw buffer i to be GL_COLOR_ATTACHMENTi or GL_NONE.
+							GLenum drawBuffers[BGFX_CONFIG_MAX_FRAME_BUFFER_ATTACHMENTS];
+							for (uint32_t jj = 0; jj < colorIdx; ++jj)
+							{
+								drawBuffers[jj] = GL_NONE;
+							}
+							drawBuffers[colorIdx] = GL_COLOR_ATTACHMENT0 + colorIdx;
+							GL_CHECK(glDrawBuffers(colorIdx + 1, drawBuffers) );
 						}
 
 						colorIdx++;
