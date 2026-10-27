@@ -7271,7 +7271,12 @@ namespace bgfx { namespace d3d12
 
 			if (writeOnly)
 			{
-				resourceDesc.Flags |= D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE;
+				// D3D12 allows DENY_SHADER_RESOURCE only together with ALLOW_DEPTH_STENCIL.
+				if (depth)
+				{
+					resourceDesc.Flags |= D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE;
+				}
+
 				state              &= ~D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 			}
 
