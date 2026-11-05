@@ -581,6 +581,7 @@ BX_PRAGMA_DIAGNOSTIC_POP();
 				framebuffer = m_apple;
 				multisample = m_apple;
 				supports3D  = true;
+				autoMipmap  = m_apple;
 				break;
 
 			case TextureFormat::B5G6R5:
