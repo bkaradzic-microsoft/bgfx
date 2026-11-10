@@ -10038,7 +10038,9 @@ VK_DESTROY
 		VkResult result = VK_SUCCESS;
 
 		const uint32_t samplerIndex = (m_desc.flags & BGFX_SWAP_CHAIN_MSAA_MASK) >> BGFX_SWAP_CHAIN_MSAA_SHIFT;
-		const uint64_t textureFlags = (uint64_t(samplerIndex + 1) << BGFX_TEXTURE_RT_MSAA_SHIFT) | BGFX_TEXTURE_RT | BGFX_TEXTURE_RT_WRITE_ONLY;
+		// The RT MSAA field encodes BGFX_TEXTURE_RT as 1 and MSAA xN as log2(N)+1, so the
+		// sample count must not be OR-ed with BGFX_TEXTURE_RT (X2|RT would read as X4).
+		const uint64_t textureFlags = (uint64_t(samplerIndex + 1) << BGFX_TEXTURE_RT_MSAA_SHIFT) | BGFX_TEXTURE_RT_WRITE_ONLY;
 		m_sampler = s_msaa[samplerIndex];
 
 		const uint32_t requiredCaps = m_sampler.Count > 1
