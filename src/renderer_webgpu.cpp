@@ -7579,18 +7579,12 @@ WGPU_IMPORT
 
 			const uint32_t nonPowerOfTwo = (srcWidth & 1) | ( (srcHeight & 1) << 1);
 
-			uint8_t additionalMips = 0;
-			{
-				const uint32_t v = 0
-					| (dstWidth  == 1 ? dstHeight : dstWidth)
-					| (dstHeight == 1 ? dstWidth : dstHeight)
-					;
-
-				if (0 != v)
-				{
-					additionalMips = bx::countTrailingZeros(v);
-				}
-			}
+			// Extra mips reuse 2x2 shared-memory reductions, so every chained level must stay 2D. Once either
+			// dimension reaches 1, out-of-range threads would sample clamped texels and bias the average.
+			const uint8_t additionalMips = 0 != dstWidth && 0 != dstHeight
+				? uint8_t(bx::countTrailingZeros(dstWidth | dstHeight) )
+				: 0
+				;
 
 			uint8_t numMips = 1 + bx::min<uint8_t>(additionalMips, 3);
 
