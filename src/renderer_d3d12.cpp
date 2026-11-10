@@ -7987,8 +7987,9 @@ namespace bgfx { namespace d3d12
 
 		D3D12_RESOURCE_DESC desc = getResourceDesc(m_ptr);
 
-		desc.Width  = boxWidth;
-		desc.Height = boxHeight;
+		desc.Width     = boxWidth;
+		desc.Height    = boxHeight;
+		desc.MipLevels = 1;
 
 		if (TextureD3D12::Texture3D == m_type)
 		{
@@ -9945,6 +9946,94 @@ namespace bgfx { namespace d3d12
 
 				src.setState(m_commandList, D3D12_RESOURCE_STATE_COPY_SOURCE);
 				dst.setState(m_commandList, D3D12_RESOURCE_STATE_COPY_DEST);
+				continue;
+			}
+
+			const bool is3D = TextureD3D12::Texture3D == src.m_type;
+			const uint32_t subresourceZ = is3D || TextureD3D12::TextureCube == src.m_type
+				? blit.m_srcZ
+				: bx::min(blit.m_srcZ, (uint16_t)src.m_numLayers - 1)
+				;
+			const uint32_t dstSubresourceZ = is3D || TextureD3D12::TextureCube == dst.m_type
+				? blit.m_dstZ
+				: bx::min(blit.m_dstZ, (uint16_t)dst.m_numLayers - 1)
+				;
+
+			if (blit.m_src.idx == blit.m_dst.idx
+			&&  blit.m_srcMip  == blit.m_dstMip
+			&&  (is3D || subresourceZ == dstSubresourceZ)
+			&&  NULL == src.m_singleMsaa
+			&&  !bimg::isDepth(bimg::TextureFormat::Enum(src.m_textureFormat) ) )
+			{
+				// D3D12 can't copy within a single subresource (every slice of a 3D mip is one
+				// subresource), so bounce the region through a temporary texture.
+				const uint32_t subresource = is3D
+					? blit.m_srcMip
+					: subresourceZ*src.m_numMips + blit.m_srcMip
+					;
+				const uint32_t depth = is3D ? bx::max<uint32_t>(1, blit.m_depth) : 1;
+				const uint32_t srcZ  = is3D ? blit.m_srcZ : 0;
+				const uint32_t dstZ  = is3D ? blit.m_dstZ : 0;
+
+				const bimg::ImageBlockInfo& blockInfo = bimg::getBlockInfo(bimg::TextureFormat::Enum(src.m_textureFormat) );
+
+				D3D12_RESOURCE_DESC desc = getResourceDesc(src.m_ptr);
+				desc.Alignment          = 0;
+				desc.Width              = bx::alignUp(uint32_t(blit.m_width),  uint32_t(blockInfo.blockWidth) );
+				desc.Height             = bx::alignUp(uint32_t(blit.m_height), uint32_t(blockInfo.blockHeight) );
+				desc.DepthOrArraySize   = uint16_t(depth);
+				desc.MipLevels          = 1;
+				desc.SampleDesc.Count   = 1;
+				desc.SampleDesc.Quality = 0;
+				desc.Layout             = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+				desc.Flags              = D3D12_RESOURCE_FLAG_NONE;
+
+				ID3D12Resource* temp = createCommittedResource(m_device, HeapProperty::Default, &desc, NULL);
+
+				const D3D12_TEXTURE_COPY_LOCATION tempLocation =
+				{
+					.pResource        = temp,
+					.Type             = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
+					.SubresourceIndex = 0,
+				};
+
+				const D3D12_TEXTURE_COPY_LOCATION location =
+				{
+					.pResource        = src.m_ptr,
+					.Type             = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
+					.SubresourceIndex = subresource,
+				};
+
+				const D3D12_BOX srcBox =
+				{
+					.left   = blit.m_srcX,
+					.top    = blit.m_srcY,
+					.front  = srcZ,
+					.right  = uint32_t(blit.m_srcX) + blit.m_width,
+					.bottom = uint32_t(blit.m_srcY) + blit.m_height,
+					.back   = srcZ + depth,
+				};
+
+				const D3D12_BOX tempBox =
+				{
+					.left   = 0,
+					.top    = 0,
+					.front  = 0,
+					.right  = blit.m_width,
+					.bottom = blit.m_height,
+					.back   = depth,
+				};
+
+				m_commandList->CopyTextureRegion(&tempLocation, 0, 0, 0, &location, &srcBox);
+
+				setResourceBarrier(m_commandList, temp, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COPY_SOURCE);
+				setResourceBarrier(m_commandList, src.m_ptr, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COPY_DEST, subresource);
+
+				m_commandList->CopyTextureRegion(&location, blit.m_dstX, blit.m_dstY, dstZ, &tempLocation, &tempBox);
+
+				setResourceBarrier(m_commandList, src.m_ptr, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COPY_SOURCE, subresource);
+
+				m_cmd.release(temp);
 				continue;
 			}
 
