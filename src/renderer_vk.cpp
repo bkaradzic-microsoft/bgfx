@@ -8660,8 +8660,12 @@ VK_DESTROY
 			|| m_type == VK_IMAGE_VIEW_TYPE_CUBE_ARRAY
 			;
 
-		const uint32_t layer     = isCube ? 0          : _layer;
-		const uint32_t numLayers = isCube ? m_numSides : _numLayers;
+		// 3D images have a single array layer; attachment layer selects a depth slice, but mip
+		// generation must operate on the whole volume.
+		const bool is3D = VK_IMAGE_VIEW_TYPE_3D == m_type;
+
+		const uint32_t layer     = isCube ? 0          : is3D ? 0 : _layer;
+		const uint32_t numLayers = isCube ? m_numSides : is3D ? 1 : _numLayers;
 
 		if (needResolve)
 		{
@@ -8800,6 +8804,7 @@ VK_DESTROY
 
 			int32_t mipWidth  = bx::max<int32_t>(int32_t(m_width)  >> _mip, 1);
 			int32_t mipHeight = bx::max<int32_t>(int32_t(m_height) >> _mip, 1);
+			int32_t mipDepth  = is3D ? bx::max<int32_t>(int32_t(m_depth) >> _mip, 1) : 1;
 
 			const VkFilter filter = bimg::isDepth(bimg::TextureFormat::Enum(m_textureFormat) )
 				? VK_FILTER_NEAREST
@@ -8808,13 +8813,13 @@ VK_DESTROY
 
 			VkImageBlit blit;
 			blit.srcOffsets[0] = { 0, 0, 0 };
-			blit.srcOffsets[1] = { mipWidth, mipHeight, 1 };
+			blit.srcOffsets[1] = { mipWidth, mipHeight, mipDepth };
 			blit.srcSubresource.aspectMask     = m_aspectFlags;
 			blit.srcSubresource.mipLevel       = 0;
 			blit.srcSubresource.baseArrayLayer = layer;
 			blit.srcSubresource.layerCount     = numLayers;
 			blit.dstOffsets[0] = { 0, 0, 0 };
-			blit.dstOffsets[1] = { mipWidth, mipHeight, 1 };
+			blit.dstOffsets[1] = { mipWidth, mipHeight, mipDepth };
 			blit.dstSubresource.aspectMask     = m_aspectFlags;
 			blit.dstSubresource.mipLevel       = 0;
 			blit.dstSubresource.baseArrayLayer = layer;
@@ -8824,13 +8829,14 @@ VK_DESTROY
 			{
 				BGFX_PROFILER_SCOPE("Mipmap", kColorResource);
 
-				blit.srcOffsets[1] = { mipWidth, mipHeight, 1 };
+				blit.srcOffsets[1] = { mipWidth, mipHeight, mipDepth };
 				blit.srcSubresource.mipLevel = i - 1;
 
 				mipWidth  = bx::max(mipWidth  >> 1, 1);
 				mipHeight = bx::max(mipHeight >> 1, 1);
+				mipDepth  = bx::max(mipDepth  >> 1, 1);
 
-				blit.dstOffsets[1] = { mipWidth, mipHeight, 1 };
+				blit.dstOffsets[1] = { mipWidth, mipHeight, mipDepth };
 				blit.dstSubresource.mipLevel = i;
 
 				setImageMemoryBarrier(
