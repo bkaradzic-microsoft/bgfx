@@ -9439,19 +9439,23 @@ VK_DESTROY
 					&& surfaceCapabilities.maxImageExtent.height <= surfaceExtentSanityMax
 					;
 
-				const uint32_t width = bx::clamp<uint32_t>(
-					  m_desc.width
-					, surfaceCapabilities.minImageExtent.width
-					, surfaceCapabilities.maxImageExtent.width
-					);
-				const uint32_t height = bx::clamp<uint32_t>(
-					  m_desc.height
-					, surfaceCapabilities.minImageExtent.height
-					, surfaceCapabilities.maxImageExtent.height
-					);
+				VkExtent2D extent = { m_desc.width, m_desc.height };
+				if (!getPresentScaling(surfaceCapabilities, extent, NULL) )
+				{
+					extent.width  = bx::clamp<uint32_t>(
+						  m_desc.width
+						, surfaceCapabilities.minImageExtent.width
+						, surfaceCapabilities.maxImageExtent.width
+						);
+					extent.height = bx::clamp<uint32_t>(
+						  m_desc.height
+						, surfaceCapabilities.minImageExtent.height
+						, surfaceCapabilities.maxImageExtent.height
+						);
+				}
 
-				if (0 == width
-				||  0 == height
+				if (0 == extent.width
+				||  0 == extent.height
 				||  VK_SUCCESS != result
 				||  !surfaceCapsSane)
 				{
@@ -9756,16 +9760,27 @@ VK_DESTROY
 			: s_textureFormat[m_colorFormat].m_fmt
 			;
 
-		const uint32_t width = bx::clamp<uint32_t>(
-			  m_desc.width
-			, surfaceCapabilities.minImageExtent.width
-			, surfaceCapabilities.maxImageExtent.width
-			);
-		const uint32_t height = bx::clamp<uint32_t>(
-			  m_desc.height
-			, surfaceCapabilities.minImageExtent.height
-			, surfaceCapabilities.maxImageExtent.height
-			);
+		VkSwapchainPresentScalingCreateInfoEXT scalingInfo;
+		VkExtent2D extent = { m_desc.width, m_desc.height };
+		const bool presentScaling = getPresentScaling(surfaceCapabilities, extent, &scalingInfo);
+
+		if (!presentScaling)
+		{
+			extent.width  = bx::clamp<uint32_t>(
+				  m_desc.width
+				, surfaceCapabilities.minImageExtent.width
+				, surfaceCapabilities.maxImageExtent.width
+				);
+			extent.height = bx::clamp<uint32_t>(
+				  m_desc.height
+				, surfaceCapabilities.minImageExtent.height
+				, surfaceCapabilities.maxImageExtent.height
+				);
+		}
+
+		const uint32_t width  = extent.width;
+		const uint32_t height = extent.height;
+
 		if (width != m_desc.width || height != m_desc.height)
 		{
 			BX_TRACE("Clamped swapchain resolution from %dx%d to %dx%d"
@@ -9877,6 +9892,12 @@ VK_DESTROY
 			modesInfo.pNext = m_sci.pNext;
 
 			m_sci.pNext = &modesInfo;
+		}
+
+		if (presentScaling)
+		{
+			scalingInfo.pNext = m_sci.pNext;
+			m_sci.pNext = &scalingInfo;
 		}
 
 		const bool lowLatency = isLowLatency();
@@ -10292,6 +10313,107 @@ VK_DESTROY
 		}
 
 		return idx;
+	}
+
+	bool SwapChainVK::getPresentScaling(const VkSurfaceCapabilitiesKHR& _surfaceCapabilities, VkExtent2D& _extent, VkSwapchainPresentScalingCreateInfoEXT* _scalingInfo)
+	{
+		BGFX_PROFILER_SCOPE("SwapChainVK::getPresentScaling", kColorFrame);
+
+		// Surfaces with a fixed extent (e.g. Win32) can't match a requested resolution that
+		// differs from the window size. With VK_EXT_swapchain_maintenance1 present scaling the
+		// swapchain keeps the requested resolution and is stretched to the surface on present,
+		// matching D3D/DXGI behavior.
+		const bool fits = true
+			&& _extent.width  >= _surfaceCapabilities.minImageExtent.width
+			&& _extent.width  <= _surfaceCapabilities.maxImageExtent.width
+			&& _extent.height >= _surfaceCapabilities.minImageExtent.height
+			&& _extent.height <= _surfaceCapabilities.maxImageExtent.height
+			;
+
+		if (fits
+		||  0 == _surfaceCapabilities.maxImageExtent.width
+		||  0 == _surfaceCapabilities.maxImageExtent.height
+		||  0 == _extent.width
+		||  0 == _extent.height
+		||  !s_renderVK->m_swapchainMaintenance1Supported
+		||  NULL == vkGetPhysicalDeviceSurfaceCapabilities2KHR)
+		{
+			return false;
+		}
+
+		const uint32_t presentModeIdx[] =
+		{
+			findPresentMode(true),
+			findPresentMode(false),
+		};
+
+		VkExtent2D minExtent = { 0, 0 };
+		VkExtent2D maxExtent = { UINT32_MAX, UINT32_MAX };
+		VkPresentGravityFlagsEXT gravityX = VK_PRESENT_GRAVITY_MIN_BIT_EXT;
+		VkPresentGravityFlagsEXT gravityY = VK_PRESENT_GRAVITY_MIN_BIT_EXT;
+
+		for (uint32_t ii = 0; ii < BX_COUNTOF(presentModeIdx); ++ii)
+		{
+			if (UINT32_MAX == presentModeIdx[ii])
+			{
+				return false;
+			}
+
+			VkSurfacePresentModeEXT surfacePresentMode;
+			surfacePresentMode.sType = VK_STRUCTURE_TYPE_SURFACE_PRESENT_MODE_EXT;
+			surfacePresentMode.pNext = NULL;
+			surfacePresentMode.presentMode = s_presentMode[presentModeIdx[ii] ].mode;
+
+			VkPhysicalDeviceSurfaceInfo2KHR surfaceInfo;
+			surfaceInfo.sType   = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR;
+			surfaceInfo.pNext   = &surfacePresentMode;
+			surfaceInfo.surface = m_surface;
+
+			VkSurfacePresentScalingCapabilitiesEXT scalingCapabilities = {};
+			scalingCapabilities.sType = VK_STRUCTURE_TYPE_SURFACE_PRESENT_SCALING_CAPABILITIES_EXT;
+
+			VkSurfaceCapabilities2KHR surfaceCapabilities2 = {};
+			surfaceCapabilities2.sType = VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR;
+			surfaceCapabilities2.pNext = &scalingCapabilities;
+
+			const VkResult result = vkGetPhysicalDeviceSurfaceCapabilities2KHR(s_renderVK->m_physicalDevice, &surfaceInfo, &surfaceCapabilities2);
+
+			if (VK_SUCCESS != result
+			||  0 == (scalingCapabilities.supportedPresentScaling & VK_PRESENT_SCALING_STRETCH_BIT_EXT) )
+			{
+				return false;
+			}
+
+			minExtent.width  = bx::max(minExtent.width,  scalingCapabilities.minScaledImageExtent.width);
+			minExtent.height = bx::max(minExtent.height, scalingCapabilities.minScaledImageExtent.height);
+			maxExtent.width  = bx::min(maxExtent.width,  scalingCapabilities.maxScaledImageExtent.width);
+			maxExtent.height = bx::min(maxExtent.height, scalingCapabilities.maxScaledImageExtent.height);
+
+			gravityX &= scalingCapabilities.supportedPresentGravityX;
+			gravityY &= scalingCapabilities.supportedPresentGravityY;
+		}
+
+		if (minExtent.width  > maxExtent.width
+		||  minExtent.height > maxExtent.height)
+		{
+			return false;
+		}
+
+		_extent.width  = bx::clamp(_extent.width,  minExtent.width,  maxExtent.width);
+		_extent.height = bx::clamp(_extent.height, minExtent.height, maxExtent.height);
+
+		if (NULL != _scalingInfo)
+		{
+			const bool gravity = 0 != gravityX && 0 != gravityY;
+
+			_scalingInfo->sType           = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_SCALING_CREATE_INFO_EXT;
+			_scalingInfo->pNext           = NULL;
+			_scalingInfo->scalingBehavior = VK_PRESENT_SCALING_STRETCH_BIT_EXT;
+			_scalingInfo->presentGravityX = gravity ? gravityX : 0;
+			_scalingInfo->presentGravityY = gravity ? gravityY : 0;
+		}
+
+		return true;
 	}
 
 	TextureFormat::Enum SwapChainVK::findSurfaceFormat(TextureFormat::Enum _format, VkColorSpaceKHR _colorSpace, bool _srgb)
