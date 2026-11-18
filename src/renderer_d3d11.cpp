@@ -2984,6 +2984,13 @@ namespace bgfx { namespace d3d11
 		{
 			_state &= BGFX_D3D11_BLEND_STATE_MASK;
 
+			// Blending is invalid on integer render targets (D3D11 drops the draw), so the blend
+			// state depends on which attachments of the current frame buffer are integer.
+			const uint8_t intColorMask = isValid(m_fbh)
+				? m_frameBuffers[m_fbh.idx].m_intColorMask
+				: 0
+				;
+
 			bx::HashMurmur2A murmur;
 			murmur.begin();
 			murmur.add(_state);
@@ -2992,6 +2999,7 @@ namespace bgfx { namespace d3d11
 				: -1
 				);
 			murmur.add(_mrtMask);
+			murmur.add(intColorMask);
 			const uint32_t hash = murmur.end();
 
 			ID3D11BlendState* bs = m_blendStateCache.find(hash);
@@ -3070,6 +3078,19 @@ namespace bgfx { namespace d3d11
 						if (0 == (_mrtMask & (1<<ii) ) )
 						{
 							desc.RenderTarget[ii].RenderTargetWriteMask = 0;
+						}
+					}
+				}
+
+				if (0 != intColorMask)
+				{
+					desc.IndependentBlendEnable = true;
+
+					for (uint32_t ii = 0; ii < BX_COUNTOF(desc.RenderTarget); ++ii)
+					{
+						if (0 != (intColorMask & (1<<ii) ) )
+						{
+							desc.RenderTarget[ii].BlendEnable = false;
 						}
 					}
 				}
@@ -3998,7 +4019,7 @@ namespace bgfx { namespace d3d11
 
 			const bool intColor = true
 				&& isValid(m_fbh)
-				&& m_frameBuffers[m_fbh.idx].m_intColor
+				&& 0 != m_frameBuffers[m_fbh.idx].m_intColorMask
 				&& 0 != (_clear.m_flags & BGFX_CLEAR_COLOR)
 				&& !isZeroColorClear(_clear, _palette)
 				;
@@ -6328,7 +6349,7 @@ namespace bgfx { namespace d3d11
 		m_width  = 0;
 		m_height = 0;
 		m_needsQuadClear = false;
-		m_intColor       = false;
+		m_intColorMask   = 0;
 
 		if (0 < m_numTh)
 		{
@@ -6451,9 +6472,11 @@ namespace bgfx { namespace d3d11
 
 						{
 							const bx::EncodingType::Enum encoding = bx::EncodingType::Enum(bimg::getBlockInfo(bimg::TextureFormat::Enum(texture.m_textureFormat) ).encoding);
-							m_intColor |= bx::EncodingType::Int  == encoding
-								||        bx::EncodingType::Uint == encoding
+							const bool intColor = false
+								|| bx::EncodingType::Int  == encoding
+								|| bx::EncodingType::Uint == encoding
 								;
+							m_intColorMask |= intColor ? uint8_t(1<<m_num) : 0;
 						}
 
 						D3D11_RENDER_TARGET_VIEW_DESC desc;
